@@ -1,0 +1,34 @@
+# Minimal domain config stub. Expand with the full dataset/metric/dimension
+# catalogue and business rules as the example domain is built out.
+domain_id: example
+display_name: "Example Domain"
+
+datasets:
+  - name: Sales
+    description: "Transactional sales records (volume and value) by SKU, region, and time period."
+  - name: Revenue
+    description: "Net sales revenue derived from sales, net of discounts and returns."
+
+metrics:
+  - name: Volume
+    description: "Total units or hectoliters sold."
+    unit: "hectoliters"
+  - name: Revenue
+    description: "Net sales revenue in local currency."
+    unit: "CNY"
+
+dimensions:
+  - name: Brand
+    description: "Brand identifier within the portfolio."
+    example_values: ["Budweiser", "Harbin", "Corona"]
+  - name: Region
+    description: "Geographic sales region within China."
+    example_values: ["East China", "South China", "North China", "West China"]
+
+business_rules: []
+terminology: {}
+
+# Per-service domain_prompt overrides (service name -> full domain prompt
+# text). Leave empty for now -- see prompts/base.py for the default
+# template that is rendered from the fields above when no override exists.
+domain_prompt_overrides: {}

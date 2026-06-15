@@ -1,0 +1,20 @@
+# Similar Plan corpus -- archetypes only (reasoning/probe patterns), never
+# answers or data. This is a placeholder corpus illustrating the
+# SimilarPlanEntry schema; add more archetypes as they are identified.
+
+- id: root_cause_metric_change
+  intent: "explain change in metric"
+  dataset_family: ["Sales", "Revenue", "Pricing", "Portfolio"]
+  analysis_type: "root_cause_analysis"
+  probe_sequence:
+    - "trend"
+    - "decomposition"
+    - "segment analysis"
+    - "driver analysis"
+  failure_modes:
+    - "missing baseline"
+    - "premature attribution"
+  stop_condition: "top drivers explain majority of change"
+  description: >
+    Use when the user asks why a metric (e.g. revenue or volume) increased
+    or decreased over a period and wants the primary drivers identified.

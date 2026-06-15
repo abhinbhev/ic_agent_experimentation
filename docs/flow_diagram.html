@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IC Agent — Orchestration Flow</title>
+<style>
+  :root {
+    --llm: #5b6cf0;
+    --logic: #2fa86b;
+    --hybrid: #d98a2b;
+    --bg: #0f1320;
+    --panel: #171c2e;
+    --text: #e8eaf2;
+    --muted: #9aa3bd;
+    --line: #5a6380;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  p.subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(560px, 2fr) 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .diagram-card, .panel-card, .legend-card, .example-card {
+    background: var(--panel);
+    border: 1px solid #2a3050;
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  svg { width: 100%; height: auto; display: block; }
+
+  .node rect {
+    rx: 10px;
+    stroke-width: 2;
+    cursor: pointer;
+    transition: filter .12s ease, transform .12s ease;
+  }
+  .node:hover rect { filter: brightness(1.25); }
+  .node.selected rect { stroke: #ffd166; stroke-width: 3; }
+  .node text { fill: var(--text); font-size: 13px; pointer-events: none; }
+  .node .sub { fill: var(--muted); font-size: 10.5px; }
+
+  .node.llm rect { fill: #232a4d; stroke: var(--llm); }
+  .node.logic rect { fill: #1d3328; stroke: var(--logic); }
+  .node.hybrid rect { fill: #332a1a; stroke: var(--hybrid); }
+  .node.io rect { fill: #20253b; stroke: var(--line); stroke-dasharray: 4 3; }
+
+  .edge { stroke: var(--line); stroke-width: 2; fill: none; }
+  .edge.loop { stroke: #ff8fa3; stroke-width: 2.5; }
+  .edge.stop { stroke: #62e0a1; stroke-width: 2.5; }
+  .edge-label { fill: var(--muted); font-size: 11px; }
+  .edge-label.loop { fill: #ff8fa3; }
+  .edge-label.stop { fill: #62e0a1; }
+
+  .round-badge {
+    fill: none;
+    stroke: #ff8fa3;
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    opacity: .55;
+  }
+  .round-text { fill: #ff8fa3; font-size: 11px; opacity: .8; }
+
+  /* side panel */
+  .panel-card h2 { margin: 0 0 6px; font-size: 16px; }
+  .panel-card .tag {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    margin-bottom: 10px; font-weight: 600; letter-spacing: .03em;
+  }
+  .tag.llm { background: rgba(91,108,240,.18); color: #aab4ff; border: 1px solid var(--llm); }
+  .tag.logic { background: rgba(47,168,107,.18); color: #8be0b4; border: 1px solid var(--logic); }
+  .tag.hybrid { background: rgba(217,138,43,.18); color: #f3c98c; border: 1px solid var(--hybrid); }
+
+  .panel-card h3 { margin: 14px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .panel-card ul { margin: 4px 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+  .panel-card p { font-size: 13px; line-height: 1.55; margin: 6px 0; }
+  .panel-card code {
+    background: #0e1224; border: 1px solid #2a3050; border-radius: 4px;
+    padding: 1px 5px; font-size: 12px; color: #c8d0ff;
+  }
+  .placeholder { color: var(--muted); font-size: 13px; }
+
+  .legend-card { margin-top: 16px; }
+  .legend-card h3 { margin: 0 0 8px; font-size: 13px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 6px 0; color: var(--muted); }
+  .swatch { width: 16px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+  .swatch.llm { background: #232a4d; border: 2px solid var(--llm); }
+  .swatch.logic { background: #1d3328; border: 2px solid var(--logic); }
+  .swatch.hybrid { background: #332a1a; border: 2px solid var(--hybrid); }
+  .swatch.io { background: #20253b; border: 2px dashed var(--line); }
+  .legend-line { width: 24px; height: 2px; background: var(--line); }
+  .legend-line.loop { background: #ff8fa3; height: 2.5px; }
+  .legend-line.stop { background: #62e0a1; height: 2.5px; }
+
+  .example-section {
+    margin-top: 24px;
+    background: var(--panel);
+    border: 1px solid #2a3050;
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .example-section h2 { margin: 0 0 6px; font-size: 18px; }
+  .example-query {
+    font-size: 13px; color: var(--muted); margin: 0 0 14px;
+  }
+
+  .round-block {
+    border: 1px solid #2a3050;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: #131829;
+  }
+  .round-block > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .round-block > summary::-webkit-details-marker { display: none; }
+  .round-block > summary::before {
+    content: "▶";
+    font-size: 10px;
+    color: var(--muted);
+    transition: transform .12s ease;
+  }
+  .round-block[open] > summary::before { transform: rotate(90deg); }
+
+  .round-tag {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px;
+    background: rgba(255,143,163,.15); color: #ff8fa3;
+    border: 1px solid #ff8fa3;
+  }
+  .round-tag.stop {
+    background: rgba(98,224,161,.15); color: #62e0a1; border-color: #62e0a1;
+  }
+
+  .step {
+    padding: 4px 16px 14px;
+    border-top: 1px solid #232a4d;
+  }
+  .step:first-of-type { border-top: none; }
+  .step-head { margin: 10px 0 4px; }
+  .step-node {
+    display: inline-block;
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #c8d0ff;
+    background: #232a4d;
+    border: 1px solid var(--llm);
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+  .step p { font-size: 13px; line-height: 1.55; margin: 4px 0 8px; }
+  .step pre {
+    background: #0e1224;
+    border: 1px solid #2a3050;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #c8d0ff;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 0;
+  }
+
+  .loop-arrow {
+    margin: 4px 16px 14px;
+    font-size: 13px;
+    color: #ff8fa3;
+    font-weight: 600;
+  }
+  .loop-arrow.stop { color: #62e0a1; }
+  .loop-arrow code { color: inherit; background: rgba(255,255,255,.06); }
+
+  .confidence-line { font-size: 13px; margin: 8px 0 2px; }
+</style>
+</head>
+<body>
+
+<h1>IC Agent — Query Orchestration Flow</h1>
+<p class="subtitle">
+  Click any box for details (inputs, outputs, prompt structure). Pentagon = the
+  iterative investigation loop, run once per "round". Pink arrow = loop back for
+  another round; green arrow = stop and write the final report.
+</p>
+
+<div class="layout">
+  <div class="diagram-card">
+    <svg viewBox="0 0 900 760" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"></path>
+        </marker>
+        <marker id="arrow-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#ff8fa3"></path>
+        </marker>
+        <marker id="arrow-stop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#62e0a1"></path>
+        </marker>
+      </defs>
+
+      <!-- round indicator behind the pentagon -->
+      <circle class="round-badge" cx="550" cy="475" r="245"></circle>
+      <text class="round-text" x="550" y="475" text-anchor="middle">one "round" of
+        the investigation loop</text>
+
+      <!-- edges drawn first (lines under boxes) -->
+      <g id="edges"></g>
+      <!-- nodes drawn on top -->
+      <g id="nodes"></g>
+    </svg>
+  </div>
+
+  <div>
+    <div class="panel-card" id="panel">
+      <p class="placeholder">Click a box in the diagram to see what it does, what
+        goes in, and what comes out.</p>
+    </div>
+
+    <div class="legend-card">
+      <h3>Legend</h3>
+      <div class="legend-row"><span class="swatch llm"></span> LLM-backed (structured output via a SYSTEM_PROMPT + dynamic domain prompt)</div>
+      <div class="legend-row"><span class="swatch hybrid"></span> Mostly deterministic, with one small LLM call</div>
+      <div class="legend-row"><span class="swatch logic"></span> Pure logic / retrieval — no LLM</div>
+      <div class="legend-row"><span class="swatch io"></span> Query / final report (data, not a service)</div>
+      <div class="legend-row"><span class="legend-line"></span> Normal data flow</div>
+      <div class="legend-row"><span class="legend-line loop"></span> "continue" — loop back for another round</div>
+      <div class="legend-row"><span class="legend-line stop"></span> "stop" — go to final synthesis</div>
+      <h3 style="margin-top:14px;">Domain knowledge</h3>
+      <div class="legend-row">Planner Consultant &amp; Decision Consultant are
+        <b>domain-agnostic</b> — directional only, no KPIs/dimensions.</div>
+      <div class="legend-row">Planner &amp; Decision Engine are
+        <b>domain-grounded</b> — given DOMAIN GUIDELINES to translate that
+        direction into concrete KPI/dimension terms.</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="example-section">
+  <h2>Worked example</h2>
+  <p class="example-query">
+    Query: <i>"Why did revenue decline in East China during Q1?"</i>
+    &nbsp;·&nbsp; Domain: <code>example</code>
+    (datasets <code>Sales</code>, <code>Revenue</code>; dimensions
+    <code>Brand</code>, <code>Region</code>)
+  </p>
+
+  <details class="round-block" open>
+    <summary>Round 1 — initial plan <span class="round-tag">continue</span></summary>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Similar Plan</span></div>
+      <p>Filters the corpus to patterns that touch <code>Sales</code>/<code>Revenue</code>,
+        then ranks by BM25 + embedding similarity to the query.</p>
+      <pre>similar_patterns: [
+  { pattern_id: "root_cause_metric_change", confidence: 0.82,
+    reason: "Query asks why a metric (Revenue) moved in a region — matches this archetype.",
+    probe_strategy: "Decompose the change into volume vs. price/mix, then drill into the
+                      largest contributing dimension (brand / sub-region)." }
+]</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Planner Consultant</span></div>
+      <p>Drafts hypotheses and <i>directional</i> probe goals -- it knows the
+        question is about Revenue declining in East China, but (being
+        domain-agnostic) doesn't know exact KPI names, units, or what dimensions
+        exist to drill into.</p>
+      <pre>objective: "Identify the main driver(s) of the East China revenue decline in Q1."
+
+hypotheses: [
+  { id: "H1", description: "Overall sales activity fell in East China", status: "open" },
+  { id: "H2", description: "The typical price or mix of what's sold shifted", status: "open" },
+  { id: "H3", description: "One part of the portfolio drove most of the decline", status: "open" }
+]
+
+probe_candidates: [
+  { id: "P1", goal: "How has overall sales activity in East China changed vs. a year ago?",
+    expected_value: "high", reason: "Establishes the size and shape of the decline (H1)." },
+  { id: "P2", goal: "Has the typical price or product mix sold in East China shifted?",
+    expected_value: "high", reason: "Tests a price/mix shift directly (H2)." },
+  { id: "P3", goal: "Is the decline concentrated in one part of the portfolio, or spread broadly?",
+    expected_value: "medium", reason: "Tests whether the decline is broad-based or concentrated (H3)." }
+]
+
+success_criteria: "Q1 decline is explained in terms of volume vs. price/mix, with the
+  largest-contributing portfolio segment identified."
+open_questions: []</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Planner</span></div>
+      <p>Uses DOMAIN GUIDELINES (the <code>example</code> domain's metrics
+        Volume/Revenue and dimensions Brand/Region) to rewrite each directional
+        goal into a concrete <code>question</code>, then routes it to a retrieval
+        usecase. Finally orders by <code>expected_value</code> and caps at
+        <code>max_probes_per_round</code>.</p>
+      <pre>assignments: [
+  { probe_candidate_id: "P1",
+    question: "What were East China Volume (hL) and Revenue (CNY) in Q1 vs. prior-year Q1?",
+    usecase: "category", reason: "Volume/Revenue trend by Region is a category-level query." },
+  { probe_candidate_id: "P2",
+    question: "How did Revenue per hectoliter (CNY/hL) in East China change in Q1 vs. prior-year Q1?",
+    usecase: "category", reason: "Revenue per hL is derived from the same Sales/Revenue dataset." },
+  { probe_candidate_id: "P3",
+    question: "Which Brand in East China had the largest year-over-year Revenue decline in Q1?",
+    usecase: "category", reason: "Brand-level Revenue breakdown within a Region." }
+]
+→ tool_calls: [P1, P2, P3]  (3 of 3 within budget)</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Execution</span></div>
+      <p>Calls the retrieval layer for each probe; results become new evidence
+        ledger entries (round_index = 1).</p>
+      <pre>evidence_ledger += [
+  { probe_id: "P1", result: "East China Volume -12% YoY (1.84M → 1.62M hL); Revenue -18% YoY (1.56B → 1.28B CNY).",
+    relevance_score: 0.95, gap_closed: true },
+  { probe_id: "P2", result: "Revenue per hectoliter fell 7% (850 → 790 CNY/hL), consistent with a price/mix shift.",
+    relevance_score: 0.90, gap_closed: true },
+  { probe_id: "P3", result: "Corona: Revenue -25% YoY in East China, the largest decline of any brand (vs. portfolio avg -18%).",
+    relevance_score: 0.85, gap_closed: false }
+]</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Decision Consultant</span></div>
+      <p>Reviews the round-1 ledger against the original query.</p>
+      <pre>relevant_probes: ["P1", "P2", "P3"]
+irrelevant_probes: []
+
+remaining_gaps: [
+  { description: "Why did Corona specifically decline 25% in East China during Q1?", category: "open" },
+  { description: "Is the price/mix shift driven by promotions, channel mix, or list price changes?", category: "open" }
+]
+
+new_hypotheses: [
+  { id: "H4", description: "A Corona-specific distribution or promotion issue in East China", status: "open" }
+]
+confidence: 0.55</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Decision Engine</span></div>
+      <p>Computes the weighted incremental-value score and checks stop conditions.</p>
+      <pre>expected_incremental_value: 0.42   (stop_threshold = 0.35 → still worth another round)
+stop_reason: "continue"
+
+recommended_next_gap: "Why did Corona specifically decline 25% in East China during Q1?"
+reason: "This gap is both the largest single contributor identified so far (H4) and
+  directly actionable; the price/mix gap is lower priority until H4 is resolved."</pre>
+    </div>
+
+    <div class="loop-arrow">↻ <code>continue</code> — loop back to Planner Consultant, focused on the recommended gap</div>
+  </details>
+
+  <details class="round-block">
+    <summary>Round 2 — follow-up on the Corona gap <span class="round-tag stop">stop</span></summary>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Planner Consultant</span></div>
+      <p>Given <code>evidence_ledger</code>, <code>remaining_gaps</code> and
+        <code>recommended_next_gap</code> from round 1, focuses the new probes on H4
+        rather than re-planning from scratch -- still purely directional, with no
+        mention of Brand names, KPIs or units.</p>
+      <pre>objective: "Determine why the worst-performing portfolio segment declined disproportionately in East China in Q1."
+
+hypotheses: [
+  { id: "H1", description: "Overall sales activity fell in East China", status: "supported" },
+  { id: "H2", description: "The typical price or mix of what's sold shifted", status: "supported" },
+  { id: "H3", description: "One part of the portfolio drove most of the decline", status: "supported" },
+  { id: "H4", description: "That segment has its own distribution or promotion issue in East China", status: "open" }
+]
+
+probe_candidates: [
+  { id: "P4", goal: "Has anything changed in how the worst-performing segment is distributed or promoted in East China?",
+    expected_value: "high", reason: "Directly tests H4, the recommended gap." },
+  { id: "P5", goal: "Have there been any pricing or commercial-term changes specific to that segment in East China?",
+    expected_value: "medium", reason: "Covers the remaining price/mix gap as it relates to that segment." }
+]
+success_criteria: "H4 is confirmed or refuted with a specific driver, and the price/mix
+  gap is at least partially addressed."
+open_questions: []</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Planner</span></div>
+      <p>Knows from round 1's evidence that the segment in question is the Brand
+        "Corona" -- rewrites both goals naming that Brand explicitly.</p>
+      <pre>assignments: [
+  { probe_candidate_id: "P4",
+    question: "Did Corona's distribution coverage or promotional activity in the Region East China change in Q1 vs. prior-year Q1?",
+    usecase: "brand_guidance", reason: "Distribution/promotion coverage is brand-level marketing data." },
+  { probe_candidate_id: "P5",
+    question: "Were there any Corona-specific price or trade-term changes affecting Revenue in East China during Q1?",
+    usecase: "category", reason: "Pricing and trade terms are category/sales data." }
+]
+→ tool_calls: [P4, P5]  (2 of 6 probes this round; 5 total so far)</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Execution</span></div>
+      <pre>evidence_ledger += [
+  { probe_id: "P4", result: "Corona's weighted distribution in East China dropped from 78% to 65% in Q1 after a
+    distributor transition in February; this accounts for most of the brand-level volume loss.",
+    relevance_score: 0.92, gap_closed: true },
+  { probe_id: "P5", result: "No Corona-specific list-price or trade-term changes were recorded in East China during Q1.",
+    relevance_score: 0.70, gap_closed: false }
+]</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Decision Consultant</span></div>
+      <pre>remaining_gaps: [
+  { description: "Why did Corona specifically decline 25% in East China during Q1?", category: "closed" },
+  { description: "Is the price/mix shift driven by promotions, channel mix, or list price changes?", category: "partial" }
+]
+new_hypotheses: []
+confidence: 0.78</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Decision Engine</span></div>
+      <pre>expected_incremental_value: 0.22   (below stop_threshold = 0.35)
+stop_reason: "incremental_value_below_threshold"
+continue_: false</pre>
+    </div>
+
+    <div class="loop-arrow stop">■ <code>stop</code> — proceed to the Synthesizer</div>
+  </details>
+
+  <details class="round-block">
+    <summary>Final report — Synthesizer</summary>
+    <div class="step">
+      <p>Given the full 2-round ledger, the latest Decision Consultant output, and
+        <code>stop_reason = "incremental_value_below_threshold"</code>, the Synthesizer
+        writes the markdown report:</p>
+      <pre>## Summary
+East China Revenue fell 18% YoY in Q1 (1.56B → 1.28B CNY), driven by a 12% Volume
+decline and a 7% drop in Revenue per hectoliter (price/mix shift). Corona accounted
+for a disproportionate share of the decline due to a distribution coverage drop.
+
+## Key Findings
+| Metric                  | Prior-year Q1 | Q1 (current) | Change |
+|-------------------------|--------------:|-------------:|-------:|
+| Volume (hL)             | 1.84M         | 1.62M         | -12%   |
+| Revenue (CNY)           | 1.56B         | 1.28B         | -18%   |
+| Revenue per hL (CNY)    | 850           | 790           | -7%    |
+| Corona Revenue (YoY)    | —             | —             | -25%   |
+
+## Evidence
+- P1: East China Volume/Revenue trend (relevance 0.95)
+- P2: Revenue per hectoliter trend (relevance 0.90)
+- P3: Corona Revenue decline vs. portfolio (relevance 0.85)
+- P4: Corona distribution coverage 78% → 65% after distributor transition (relevance 0.92)
+- P5: No Corona-specific pricing changes found (relevance 0.70)
+
+## Recommendations
+- Prioritize restoring Corona's distribution coverage in East China with the new
+  distributor (target: back toward 78%).
+- Investigate the broader price/mix shift (channel mix vs. promotions) — currently
+  only partially explained.
+
+## Confidence
+0.7 — the volume and price/mix decomposition and the Corona distribution driver are
+well-supported (confidence 0.78 from the Decision Consultant), but the broader
+price/mix gap remains partial.
+
+## Remaining Unknowns
+- Whether the price/mix shift is driven by promotions, channel mix, or list-price
+  changes remains only partially addressed.</pre>
+      <p class="confidence-line">confidence: <b>0.7</b></p>
+    </div>
+  </details>
+</div>
+
+<script>
+const NODES = [
+  { id: "query", x: 550, y: 40, w: 190, h: 60, cls: "io",
+    title: "User Query", sub: "+ selected domain",
+    tag: "io", tagLabel: "Input",
+    body: `<p>The business question the user asks, plus the selected
+      <code>--domain</code> (e.g. <code>example</code>), which loads that
+      domain's <code>DomainConfig</code> (datasets, metrics, dimensions,
+      business rules, terminology, and any per-service prompt
+      overrides/guideline files).</p>
+      <h3>Becomes</h3>
+      <ul><li><code>state.query</code></li>
+      <li><code>state.domain_config</code></li></ul>` },
+
+  { id: "similar_plan", x: 550, y: 150, w: 190, h: 60, cls: "logic",
+    title: "Similar Plan Service", sub: "hybrid search (BM25 + embeddings)",
+    tag: "logic", tagLabel: "Logic / retrieval",
+    body: `<p>Looks for past investigation patterns similar to this query, to
+      seed the first round's plan with useful precedent.</p>
+      <h3>How</h3>
+      <ul>
+        <li>Stage 1 — filter the corpus by dataset-family overlap with the
+          domain's datasets.</li>
+        <li>Stage 2 — score candidates with BM25 and embedding cosine
+          similarity.</li>
+        <li>Stage 3 — fuse the two scores (weighted sum or RRF) and take the
+          top matches.</li>
+      </ul>
+      <h3>Output</h3>
+      <ul><li><code>similar_patterns</code>: list of
+        <code>{pattern_id, confidence, reason, probe_strategy}</code></li></ul>` },
+
+  { id: "planner_consultant", x: 550, y: 270, w: 190, h: 70, cls: "llm",
+    title: "Planner Consultant", sub: "LLM · plans the investigation (domain-agnostic)",
+    tag: "llm", tagLabel: "LLM-backed",
+    body: `<p><b>Domain-agnostic / directional.</b> Turns the question (and
+      prior-round evidence, if any) into an investigation plan: hypotheses +
+      probe candidates worth checking, expressed in plain business language.
+      It has no knowledge of KPIs, datasets, dimensions or terminology --
+      that grounding happens downstream in the Planner.</p>
+      <h3>Input</h3>
+      <ul><li><code>query</code>, <code>domain_context</code>,
+        <code>similar_patterns</code></li>
+      <li><code>evidence_ledger</code>, <code>remaining_gaps</code>,
+        <code>recommended_next_gap</code> from the previous round (empty on
+        round 1)</li></ul>
+      <h3>Output</h3>
+      <ul><li><code>objective</code>, <code>hypotheses[]</code>,
+        <code>probe_candidates[]</code> (id, goal, expected_value, reason) --
+        each <code>goal</code> is a directional statement of what to check,
+        not a KPI-grounded question</li>
+      <li><code>success_criteria</code>, <code>open_questions</code></li></ul>
+      <h3>Prompt structure</h3>
+      <p>Static <code>SYSTEM_PROMPT</code> (tool-agnostic, no domain
+      knowledge) + a <b>DOMAIN GUIDELINES</b> section assembled per the
+      selected domain: the rendered dataset/metric/dimension catalogue, any
+      <code>domain_prompt_overrides</code>, and an optional
+      <code>prompts/domains/&lt;domain_id&gt;/planner_consultant.md</code>
+      guideline file. (This is the only domain context the Planner
+      Consultant sees -- it is not expected to name specific KPIs in its
+      output.)</p>` },
+
+  { id: "planner", x: 750, y: 415, w: 170, h: 70, cls: "hybrid",
+    title: "Planner", sub: "grounds probe goals in domain KPIs + routes them",
+    tag: "hybrid", tagLabel: "Hybrid (domain-grounded LLM call + logic)",
+    body: `<p>The Planner Consultant's probe goals are directional and
+      domain-agnostic ("how has overall sales activity changed?"). The
+      Planner is the first component with real domain knowledge: it
+      rewrites each goal into a concrete, KPI/dimension-grounded
+      <code>question</code> (naming actual metrics like Revenue/Volume and
+      dimensions like Brand/Region from DOMAIN GUIDELINES), then routes that
+      question to a retrieval usecase. Finally it orders and caps the
+      round's probes.</p>
+      <h3>Input</h3>
+      <ul><li><code>probe_candidates</code> from the Planner Consultant
+        (each with a directional <code>goal</code>)</li>
+      <li><code>usecase_docs</code> — knowledge docs describing what each
+        retrieval usecase can/can't answer (e.g.
+        <code>brand_guidance</code>, <code>category</code>)</li>
+      <li>DOMAIN GUIDELINES for the selected domain (metrics, datasets,
+        dimensions, terminology)</li></ul>
+      <h3>Output</h3>
+      <ul><li><code>assignments[]</code> → <code>{probe_candidate_id,
+        question, usecase, reason}</code> — one rewritten, domain-grounded
+        question + usecase per probe candidate</li>
+      <li>mapped to <code>tool_calls[]</code> (using the rewritten
+        <code>question</code>), sorted by <code>expected_value</code> and
+        capped at <code>max_probes_per_round</code></li></ul>
+      <h3>Prompt structure</h3>
+      <p>Static <code>SYSTEM_PROMPT</code> (rewrite-then-route rules) +
+      <b>DOMAIN GUIDELINES</b> for the selected domain — this is the prompt
+      that actually needs the domain's KPI/dimension catalogue. The
+      <code>usecase_docs</code> themselves are passed dynamically in the
+      human message, not baked into the prompt — so new usecases can be
+      added without touching the prompt.</p>` },
+
+  { id: "execution", x: 673, y: 650, w: 170, h: 70, cls: "logic",
+    title: "Execution", sub: "calls the retrieval API for each probe",
+    tag: "logic", tagLabel: "Logic / retrieval",
+    body: `<p>Runs each <code>tool_call</code> against the retrieval layer
+      and appends the results to the evidence ledger.</p>
+      <h3>Input</h3>
+      <ul><li><code>tool_calls[]</code> (probe question + usecase)</li></ul>
+      <h3>Output</h3>
+      <ul><li>new <code>EvidenceLedgerEntry</code> rows: <code>{probe_id,
+        question, result, relevance_score, gap_closed, created_at,
+        round_index}</code>, appended to <code>evidence_ledger</code></li></ul>
+      <p>No LLM here — this is a thin client over the retrieval service
+      (real HTTP client, or a mock that echoes the question for testing).</p>` },
+
+  { id: "decision_consultant", x: 427, y: 650, w: 170, h: 70, cls: "llm",
+    title: "Decision Consultant", sub: "LLM · evaluates the evidence so far (domain-agnostic)",
+    tag: "llm", tagLabel: "LLM-backed",
+    body: `<p><b>Domain-agnostic / directional.</b> Reads the <i>entire</i>
+      evidence ledger (all rounds) and judges how well it answers the
+      original question, in plain business language. Like the Planner
+      Consultant, it has no KPI/dimension knowledge -- its
+      <code>remaining_gaps</code> and <code>new_hypotheses</code> describe
+      directions to investigate, not domain-grounded questions. Turning
+      those gaps into concrete questions is the Planner's job on the next
+      round.</p>
+      <h3>Input</h3>
+      <ul><li><code>query</code>, full <code>ledger</code></li></ul>
+      <h3>Output</h3>
+      <ul><li><code>relevant_probes</code> / <code>irrelevant_probes</code></li>
+      <li><code>remaining_gaps[]</code> → <code>{description, category}</code>,
+        category ∈ closed / partial / open / conflicting -- directional
+        descriptions, not KPI-grounded questions</li>
+      <li><code>new_hypotheses[]</code>, <code>confidence</code> (0–1)</li></ul>
+      <h3>Prompt structure</h3>
+      <p>Static <code>SYSTEM_PROMPT</code> (evaluation rules + output
+      contract) + <b>DOMAIN GUIDELINES</b> for the selected domain. (Present
+      for context, but the output contract keeps this component's findings
+      directional rather than KPI-specific.)</p>` },
+
+  { id: "decision_engine", x: 350, y: 415, w: 170, h: 70, cls: "hybrid",
+    title: "Decision Engine", sub: "scores value, decides continue/stop (domain-grounded)",
+    tag: "hybrid", tagLabel: "Hybrid (deterministic scoring + domain-grounded LLM call)",
+    body: `<p>Decides whether another round is worth running.</p>
+      <h3>Deterministic scoring</h3>
+      <ul><li>Computes 5 weighted sub-scores (evidence coverage, decision
+        consultant confidence, remaining-gaps score, alternative-hypotheses
+        score, probe-cost score) → <code>expected_incremental_value</code>.</li>
+      <li>Checks stop conditions in order: <code>max_rounds_reached</code> →
+        <code>max_total_probes_reached</code> →
+        <code>all_major_gaps_closed</code> →
+        <code>incremental_value_below_threshold</code> → else
+        <code>continue</code>.</li></ul>
+      <h3>Domain-grounded LLM call</h3>
+      <p><b>Domain-grounded.</b> Given the unresolved (directional) gaps
+      from the Decision Consultant, picks at most one
+      <code>recommended_next_gap</code> + a short <code>reason</code> --
+      advisory only, doesn't affect continue/stop. This call is made with
+      the same <b>DOMAIN GUIDELINES</b> as the Planner and Decision
+      Consultant (via <code>get_prompt_bundle</code>), so its recommendation
+      can take the domain's KPIs and constraints into account when picking
+      which gap matters most for the next round.</p>
+      <h3>Output</h3>
+      <ul><li><code>decision_engine_output</code> → <code>{continue_,
+        expected_incremental_value, stop_reason}</code></li>
+      <li><code>recommended_next_gap</code></li></ul>` },
+
+  { id: "synthesis", x: 130, y: 415, w: 170, h: 70, cls: "llm",
+    title: "Synthesizer", sub: "LLM · writes the final report",
+    tag: "llm", tagLabel: "LLM-backed",
+    body: `<p>Turns the accumulated evidence ledger into a business-ready
+      markdown report.</p>
+      <h3>Input</h3>
+      <ul><li><code>query</code>, full <code>ledger</code>,
+        <code>decision_consultant_output</code>, <code>stop_reason</code></li></ul>
+      <h3>Output</h3>
+      <ul><li><code>markdown</code> with exactly 6 sections: Summary, Key
+        Findings, Evidence, Recommendations, Confidence, Remaining
+        Unknowns</li>
+      <li><code>confidence</code> (0–1)</li></ul>
+      <h3>Prompt structure</h3>
+      <p>Static <code>SYSTEM_PROMPT</code> defines the consultant-style
+      writing rules (tables for comparable data, every number traceable to
+      the ledger) + <b>DOMAIN GUIDELINES</b> for the selected domain.</p>` },
+
+  { id: "final_report", x: 130, y: 270, w: 170, h: 60, cls: "io",
+    title: "Final Report", sub: "markdown + confidence",
+    tag: "io", tagLabel: "Output",
+    body: `<p>The end result returned to the user / shown in the UI:
+      <code>state.final_answer.markdown</code> and
+      <code>state.final_answer.confidence</code>, plus
+      <code>state.stop_reason</code> explaining why the loop ended.</p>` },
+];
+
+const EDGES = [
+  { from: "query", to: "similar_plan" },
+  { from: "similar_plan", to: "planner_consultant" },
+  { from: "planner_consultant", to: "planner" },
+  { from: "planner", to: "execution" },
+  { from: "execution", to: "decision_consultant" },
+  { from: "decision_consultant", to: "decision_engine" },
+  { from: "decision_engine", to: "planner_consultant", type: "loop", label: "continue → next round" },
+  { from: "decision_engine", to: "synthesis", type: "stop", label: "stop" },
+  { from: "synthesis", to: "final_report" },
+];
+
+const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+function clipPoint(node, dx, dy) {
+  const hw = node.w / 2, hh = node.h / 2;
+  if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
+  const tx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const ty = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: node.x + dx * t, y: node.y + dy * t };
+}
+
+const edgesG = document.getElementById("edges");
+const nodesG = document.getElementById("nodes");
+
+// --- draw edges ---
+for (const e of EDGES) {
+  const a = byId[e.from], b = byId[e.to];
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len;
+
+  const p1 = clipPoint(a, ux, uy);
+  const p2 = clipPoint(b, -ux, -uy);
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  let d, cls, marker;
+
+  if (e.type === "loop") {
+    // big curve looping above the pentagon back to the planner consultant
+    d = `M ${p1.x} ${p1.y} C ${a.x-40} ${a.y-150}, ${b.x+60} ${b.y-150}, ${p2.x} ${p2.y}`;
+    cls = "edge loop"; marker = "arrow-loop";
+  } else if (e.type === "stop") {
+    d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    cls = "edge stop"; marker = "arrow-stop";
+  } else {
+    d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    cls = "edge"; marker = "arrow";
+  }
+
+  path.setAttribute("d", d);
+  path.setAttribute("class", cls);
+  path.setAttribute("marker-end", `url(#${marker})`);
+  edgesG.appendChild(path);
+
+  if (e.label) {
+    const mx = e.type === "loop" ? (a.x + b.x) / 2 : (p1.x + p2.x) / 2;
+    const my = e.type === "loop" ? Math.min(a.y, b.y) - 130 : (p1.y + p2.y) / 2 - 8;
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", mx);
+    text.setAttribute("y", my);
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("class", `edge-label ${e.type}`);
+    text.textContent = e.label;
+    edgesG.appendChild(text);
+  }
+}
+
+// --- draw nodes ---
+for (const n of NODES) {
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.setAttribute("class", `node ${n.cls}`);
+  g.setAttribute("data-id", n.id);
+
+  const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  rect.setAttribute("x", n.x - n.w / 2);
+  rect.setAttribute("y", n.y - n.h / 2);
+  rect.setAttribute("width", n.w);
+  rect.setAttribute("height", n.h);
+  rect.setAttribute("rx", 10);
+  g.appendChild(rect);
+
+  const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  title.setAttribute("x", n.x);
+  title.setAttribute("y", n.y - 4);
+  title.setAttribute("text-anchor", "middle");
+  title.setAttribute("font-weight", "600");
+  title.textContent = n.title;
+  g.appendChild(title);
+
+  const sub = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  sub.setAttribute("x", n.x);
+  sub.setAttribute("y", n.y + 14);
+  sub.setAttribute("text-anchor", "middle");
+  sub.setAttribute("class", "sub");
+  sub.textContent = n.sub;
+  g.appendChild(sub);
+
+  g.addEventListener("click", () => selectNode(n.id));
+  nodesG.appendChild(g);
+}
+
+function selectNode(id) {
+  for (const el of nodesG.querySelectorAll(".node")) {
+    el.classList.toggle("selected", el.dataset.id === id);
+  }
+  const n = byId[id];
+  document.getElementById("panel").innerHTML = `
+    <span class="tag ${n.tag}">${n.tagLabel}</span>
+    <h2>${n.title}</h2>
+    ${n.body}
+  `;
+}
+
+// show the first interesting node by default
+selectNode("planner_consultant");
+</script>
+
+</body>
+</html>
