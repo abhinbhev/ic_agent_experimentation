@@ -1,0 +1,40 @@
+repos:
+  # General hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]       # catches accidentally staged PDFs/CSVs
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]  # force PRs, no direct pushes to main
+
+  # Block .env files from ever being committed
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+
+  # Secrets detection — scans for API keys, tokens, passwords, etc.
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: |
+          (?x)^(
+            \.env\.example|
+            docs/brand_highlights_extracted\.md|
+            docs/flow_diagram\.html
+          )$
+
+  # Ruff lint + format (matches existing pyproject.toml config)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
