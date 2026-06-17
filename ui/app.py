@@ -38,6 +38,23 @@ with st.sidebar:
     run = st.button("Run", type="primary", use_container_width=True)
 
 
+_DATA_SEPARATOR = "\n\nData:\n"
+_TRUNCATE_CHARS = 300
+
+
+def _render_result(result: str) -> None:
+    """Render a retrieval result: summary as text, raw data in a collapsed block."""
+    if _DATA_SEPARATOR in result:
+        summary, data_block = result.split(_DATA_SEPARATOR, 1)
+        if summary.strip():
+            st.write(summary.strip())
+        with st.expander("Raw data", expanded=False):
+            st.code(data_block, language="json")
+    else:
+        truncated = result if len(result) <= _TRUNCATE_CHARS else result[:_TRUNCATE_CHARS] + "…"
+        st.write(truncated)
+
+
 def render_step(node_name: str, update: dict) -> None:
     if node_name == "similar_plan":
         with st.expander("🔎 Similar Plan Service — matched precedents", expanded=False):
@@ -66,7 +83,9 @@ def render_step(node_name: str, update: dict) -> None:
     elif node_name == "planner":
         with st.expander("🗂️ Planner — selected probes", expanded=True):
             for tc in update.get("tool_calls", []):
-                st.write(f"- `{tc.usecase}` → {tc.question}  (probe {tc.probe_id})")
+                st.markdown(f"**`{tc.usecase}`** → {tc.question}")
+                if tc.reason:
+                    st.caption(f"↳ {tc.reason}")
 
     elif node_name == "execution":
         ledger = update.get("evidence_ledger", [])
@@ -74,7 +93,7 @@ def render_step(node_name: str, update: dict) -> None:
         with st.expander(f"📡 Retrieval — {len(new_entries)} probe(s) executed", expanded=True):
             for e in new_entries:
                 st.markdown(f"**Q:** {e.question}")
-                st.write(e.result)
+                _render_result(e.result)
                 st.divider()
 
     elif node_name == "decision_consultant":

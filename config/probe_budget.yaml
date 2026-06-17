@@ -3,9 +3,9 @@
 # Value Framework") for the rationale behind these defaults.
 
 probe_budget:
-  max_rounds: 5
-  max_probes_per_round: 6
-  max_total_probes: 20
+  max_rounds: 3
+  max_probes_per_round: 5
+  max_total_probes: 8
 
 score_fusion:
   bm25_weight: 0.5

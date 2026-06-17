@@ -47,7 +47,7 @@ Moderate confidence based on the available evidence.
 """
 
 
-def _build_test_app(sample_domain_config, sample_score_fusion_weights, stub_embedding_backend, probe_budget):
+def _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend, probe_budget):
     consultant_plan = PlannerConsultantOutput(
         objective="Investigate the East China revenue decline",
         hypotheses=[Hypothesis(id="H1", description="Pricing pressure reduced revenue")],
@@ -74,14 +74,15 @@ def _build_test_app(sample_domain_config, sample_score_fusion_weights, stub_embe
         corpus_path="corpus/similar_plans.yaml",
         score_fusion_weights=sample_score_fusion_weights,
         embedding_backend=stub_embedding_backend,
+        cache_dir=tmp_path,
     )
     planner_consultant_service = PlannerConsultantService(
         FakeStructuredChatModel({PlannerConsultantOutput: [consultant_plan]})
     )
     usecase_assignments = PlannerUsecaseAssignments(
         assignments=[
-            ProbeUsecaseAssignment(probe_candidate_id="PC1", question="q1", usecase="brand_guidance", reason="r"),
-            ProbeUsecaseAssignment(probe_candidate_id="PC2", question="q2", usecase="category", reason="r"),
+            ProbeUsecaseAssignment(probe_candidate_id="PC1", questions=["q1"], usecase="brand_guidance", reason="r"),
+            ProbeUsecaseAssignment(probe_candidate_id="PC2", questions=["q2"], usecase="category", reason="r"),
         ]
     )
     planner_service = PlannerService(
@@ -129,9 +130,9 @@ def _build_test_app(sample_domain_config, sample_score_fusion_weights, stub_embe
     return graph.compile()
 
 
-def test_graph_terminates_with_synthesis(sample_domain_config, sample_score_fusion_weights, stub_embedding_backend):
+def test_graph_terminates_with_synthesis(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend):
     probe_budget = ProbeBudgetConfig(max_rounds=2, max_probes_per_round=2, max_total_probes=4)
-    app = _build_test_app(sample_domain_config, sample_score_fusion_weights, stub_embedding_backend, probe_budget)
+    app = _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend, probe_budget)
 
     initial_state: AgentState = {
         "query": "Why did revenue decline in East China during Q1?",

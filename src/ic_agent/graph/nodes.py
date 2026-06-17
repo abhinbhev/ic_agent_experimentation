@@ -66,7 +66,10 @@ def make_planner_consultant_node(service: PlannerConsultantService) -> NodeFn:
 
 def make_planner_node(service: PlannerService) -> NodeFn:
     def node(state: AgentState) -> dict:
-        output = service.run(PlannerInput(consultant_plan=state["consultant_plan"]))
+        asked = [e.question for e in state.get("evidence_ledger", [])]
+        output = service.run(
+            PlannerInput(consultant_plan=state["consultant_plan"], asked_questions=asked)
+        )
         return {"tool_calls": output.tool_calls}
 
     return node

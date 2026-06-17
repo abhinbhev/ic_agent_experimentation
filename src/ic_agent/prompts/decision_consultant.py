@@ -15,7 +15,10 @@ You will receive a JSON object with:
 - query: the original business question being investigated.
 - ledger: the full evidence ledger across all rounds so far -- a list of \
 {probe_id, question, result, relevance_score, gap_closed, created_at, round_index}. \
-"result" is the answer text returned for that probe's question.
+"result" contains the answer for that probe's question. It may be a plain text \
+summary, or a summary followed by a "Data:" section with the raw SQL result rows as \
+JSON — always read the Data section for the actual numbers rather than relying solely \
+on the summary narrative.
 
 REASONING PROCESS
 Work through the following steps internally. Do not include this reasoning in your \

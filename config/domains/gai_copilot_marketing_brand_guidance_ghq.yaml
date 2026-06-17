@@ -1,0 +1,19 @@
+# "No prompting" experiment domain: deliberately minimal DOMAIN GUIDELINES
+# (just a domain name + one dataset, so the Similar Plan Service's metadata
+# filter can narrow to the single seeded precedent below). No metrics,
+# dimensions, business rules, terminology, or prompt overrides -- this is
+# meant to test how the agent behaves with (almost) no domain context beyond
+# the one similar plan in corpus/similar_plans.yaml.
+domain_id: gai_copilot_marketing_brand_guidance_ghq
+display_name: "GAI Copilot Marketing - Brand Guidance (GHQ)"
+
+datasets:
+  - name: Brand Guidance
+    description: "Survey-based brand health and perception data by brand, country and time period."
+
+metrics: []
+dimensions: []
+business_rules: []
+terminology: {}
+
+domain_prompt_overrides: {}

@@ -201,9 +201,10 @@
 
 <h1>IC Agent — Query Orchestration Flow</h1>
 <p class="subtitle">
-  Click any box for details (inputs, outputs, prompt structure). Pentagon = the
-  iterative investigation loop, run once per "round". Pink arrow = loop back for
-  another round; green arrow = stop and write the final report.
+  Click any box for details (inputs, outputs, prompt structure). The dashed circle =
+  the iterative investigation loop, run once per "round". Pink arrow = loop back for
+  another round; green arrow = stop and write the final report. The worked example
+  below uses a real run: <i>"How did Brahma in Brazil perform in Q1 2026?"</i>
 </p>
 
 <div class="layout">
@@ -262,10 +263,9 @@
 <div class="example-section">
   <h2>Worked example</h2>
   <p class="example-query">
-    Query: <i>"Why did revenue decline in East China during Q1?"</i>
-    &nbsp;·&nbsp; Domain: <code>example</code>
-    (datasets <code>Sales</code>, <code>Revenue</code>; dimensions
-    <code>Brand</code>, <code>Region</code>)
+    Query: <i>"How did Brahma in Brazil perform in Q1 2026?"</i>
+    &nbsp;·&nbsp; Domain: <code>gai_copilot_marketing_brand_guidance_ghq</code>
+    &nbsp;·&nbsp; 2 rounds · 9 probes total · stop reason: <code>max_total_probes_reached</code>
   </p>
 
   <details class="round-block" open>
@@ -273,226 +273,410 @@
 
     <div class="step">
       <div class="step-head"><span class="step-node">Similar Plan</span></div>
-      <p>Filters the corpus to patterns that touch <code>Sales</code>/<code>Revenue</code>,
-        then ranks by BM25 + embedding similarity to the query.</p>
+      <p>Stage 1 filters the corpus by dataset-family overlap; Stage 2 scores by
+        BM25 + embedding cosine; Stage 3 fuses scores.</p>
       <pre>similar_patterns: [
-  { pattern_id: "root_cause_metric_change", confidence: 0.82,
-    reason: "Query asks why a metric (Revenue) moved in a region — matches this archetype.",
-    probe_strategy: "Decompose the change into volume vs. price/mix, then drill into the
-                      largest contributing dimension (brand / sub-region)." }
+  { pattern_id: "brand_country_period_performance", confidence: 1.00,
+    reason: "Matched on intent 'How is a brand's performance in a country in a given period?'
+             (bm25=0.000, embedding=1.000)",
+    probe_strategy: "change in equity → factors affecting equity → perceptions of the brand
+                     → consumption → demographic insights" }
 ]</pre>
     </div>
 
     <div class="step">
       <div class="step-head"><span class="step-node">Planner Consultant</span></div>
-      <p>Drafts hypotheses and <i>directional</i> probe goals -- it knows the
-        question is about Revenue declining in East China, but (being
-        domain-agnostic) doesn't know exact KPI names, units, or what dimensions
-        exist to drill into.</p>
-      <pre>objective: "Identify the main driver(s) of the East China revenue decline in Q1."
+      <p>Uses the matched pattern as precedent. Drafts directional probe goals —
+        no KPI names, no metric names.</p>
+      <pre>objective: "Assess Brahma's brand performance in Brazil during Q1 2026 by determining
+  whether it improved, declined, or remained stable, and identifying the main drivers
+  behind that performance in brand health, perception, and audience response."
 
 hypotheses: [
-  { id: "H1", description: "Overall sales activity fell in East China", status: "open" },
-  { id: "H2", description: "The typical price or mix of what's sold shifted", status: "open" },
-  { id: "H3", description: "One part of the portfolio drove most of the decline", status: "open" }
+  { id: "H1", description: "Brahma's overall brand performance in Brazil improved in Q1 2026
+    versus the relevant prior period(s).", status: "open" },
+  { id: "H2", description: "Any change in Brahma's Q1 2026 performance was primarily driven
+    by shifts in brand perceptions rather than broad stability across all measures.", status: "open" },
+  { id: "H3", description: "Brahma's Q1 2026 performance in Brazil varied meaningfully across
+    consumer segments, indicating uneven strength within the market.", status: "open" }
 ]
 
 probe_candidates: [
-  { id: "P1", goal: "How has overall sales activity in East China changed vs. a year ago?",
-    expected_value: "high", reason: "Establishes the size and shape of the decline (H1)." },
-  { id: "P2", goal: "Has the typical price or product mix sold in East China shifted?",
-    expected_value: "high", reason: "Tests a price/mix shift directly (H2)." },
-  { id: "P3", goal: "Is the decline concentrated in one part of the portfolio, or spread broadly?",
-    expected_value: "medium", reason: "Tests whether the decline is broad-based or concentrated (H3)." }
+  { id: "P1", goal: "How did Brahma's overall brand health in Brazil change in Q1 2026 compared
+    with the immediately preceding period and the same period last year?",
+    expected_value: "high", reason: "Directly establishes the topline answer for H1." },
+  { id: "P2", goal: "Which brand perceptions for Brahma in Brazil strengthened or weakened in
+    Q1 2026, and which shifts best explain the overall performance change?",
+    expected_value: "high", reason: "Tests H2 — perception-level drivers behind topline movement." },
+  { id: "P3", goal: "How did consumer consideration, preference, and usage-related outcomes
+    for Brahma in Brazil move in Q1 2026?",
+    expected_value: "high", reason: "Determines whether changes were translating into consumer response." },
+  { id: "P4", goal: "Did Brahma's Q1 2026 performance in Brazil differ across key demographic
+    or audience segments?",
+    expected_value: "medium", reason: "Tests H3 — pockets of strength or weakness." },
+  { id: "P5", goal: "Was Brahma's Q1 2026 performance in Brazil broad-based across brand
+    measures, or concentrated in a small number of dimensions?",
+    expected_value: "medium", reason: "Distinguishes genuine overall shift from narrow movement." }
 ]
 
-success_criteria: "Q1 decline is explained in terms of volume vs. price/mix, with the
-  largest-contributing portfolio segment identified."
-open_questions: []</pre>
-    </div>
-
-    <div class="step">
-      <div class="step-head"><span class="step-node">Planner</span></div>
-      <p>Uses DOMAIN GUIDELINES (the <code>example</code> domain's metrics
-        Volume/Revenue and dimensions Brand/Region) to rewrite each directional
-        goal into a concrete <code>question</code>, then routes it to a retrieval
-        usecase. Finally orders by <code>expected_value</code> and caps at
-        <code>max_probes_per_round</code>.</p>
-      <pre>assignments: [
-  { probe_candidate_id: "P1",
-    question: "What were East China Volume (hL) and Revenue (CNY) in Q1 vs. prior-year Q1?",
-    usecase: "category", reason: "Volume/Revenue trend by Region is a category-level query." },
-  { probe_candidate_id: "P2",
-    question: "How did Revenue per hectoliter (CNY/hL) in East China change in Q1 vs. prior-year Q1?",
-    usecase: "category", reason: "Revenue per hL is derived from the same Sales/Revenue dataset." },
-  { probe_candidate_id: "P3",
-    question: "Which Brand in East China had the largest year-over-year Revenue decline in Q1?",
-    usecase: "category", reason: "Brand-level Revenue breakdown within a Region." }
-]
-→ tool_calls: [P1, P2, P3]  (3 of 3 within budget)</pre>
-    </div>
-
-    <div class="step">
-      <div class="step-head"><span class="step-node">Execution</span></div>
-      <p>Calls the retrieval layer for each probe; results become new evidence
-        ledger entries (round_index = 1).</p>
-      <pre>evidence_ledger += [
-  { probe_id: "P1", result: "East China Volume -12% YoY (1.84M → 1.62M hL); Revenue -18% YoY (1.56B → 1.28B CNY).",
-    relevance_score: 0.95, gap_closed: true },
-  { probe_id: "P2", result: "Revenue per hectoliter fell 7% (850 → 790 CNY/hL), consistent with a price/mix shift.",
-    relevance_score: 0.90, gap_closed: true },
-  { probe_id: "P3", result: "Corona: Revenue -25% YoY in East China, the largest decline of any brand (vs. portfolio avg -18%).",
-    relevance_score: 0.85, gap_closed: false }
+open_questions: [
+  "What should be treated as the primary comparison baseline if multiple baselines are available
+   (prior quarter vs. same quarter last year)?",
+  "Should the final assessment emphasise absolute brand standing, period-over-period change, or both?"
 ]</pre>
     </div>
 
     <div class="step">
+      <div class="step-head"><span class="step-node">Planner</span></div>
+      <p>Reads <code>question_format</code> to select KPIs. Groups related KPIs
+        into one data-fetch question per probe. Multi-period requests avoid
+        separate single-period calls. All 5 probes fit within budget.</p>
+      <pre>assignments: [
+  { probe_candidate_id: "P1",
+    questions: ["What is the power of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?"],
+    usecase: "brand_guidance",
+    reason: "power captures overall brand equity; 3-period fetch covers current, prior-quarter, and prior-year in one call." },
+  { probe_candidate_id: "P2",
+    questions: [
+      "What are the meaningful, difference, salience, affinity_score, meet_need, unique_score,
+       and dynamic_score of Brahma in Brazil in Q1 2026 and Q1 2025?",
+      "What are the bip_market imageries for Brahma in Brazil in Q1 2026 and Q1 2025?"
+    ],
+    usecase: "brand_guidance",
+    reason: "Equity drivers (meaningful/difference/salience + affinity/meet_need/unique/dynamic) grouped in one
+             factual KPI call; bip_market imagery is a distinct retrieval type requiring a separate call." },
+  { probe_candidate_id: "P3",
+    questions: ["What are the consideration, trial, consumption_past_seven_days,
+                 consumption_past_four_weeks, and consumption_past_three_months of Brahma in
+                 Brazil in Q1 2026, Q4 2025, and Q1 2025?"],
+    usecase: "brand_guidance",
+    reason: "Full funnel + usage KPIs in one call; 3 periods to show trend direction." },
+  { probe_candidate_id: "P4",
+    questions: ["What are the power, meaningful, difference, and salience of Brahma in Brazil
+                 in Q1 2026 across age, gender, income, and region cohorts?"],
+    usecase: "brand_guidance",
+    reason: "Same equity KPIs as P1/P2 but with demographic dimension cuts — a distinct retrieval." },
+  { probe_candidate_id: "P5",
+    questions: [],   // subsumed: P2's multi-KPI fetch already returns breadth vs concentration evidence
+    usecase: "brand_guidance",
+    reason: "Breadth of brand-measure movement is directly readable from P2's multi-KPI result." }
+]
+→ tool_calls: 5 questions from P1–P4  (5 of 5 within budget; P5 subsumed)</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Execution</span></div>
+      <p>5 probes executed. Each <code>result</code> = narrative summary + <code>Data:</code> JSON rows.</p>
+      <pre>Q: What is the power of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?
+Data: [{"year":"2025","period":"Q1","kpi":"power","value":13.2},
+       {"year":"2025","period":"Q4","kpi":"power","value":13.2},
+       {"year":"2026","period":"Q1","kpi":"power","value":12.9}]
+
+Q: What are the meaningful, difference, salience, affinity_score, meet_need, unique_score,
+   and dynamic_score of Brahma in Brazil in Q1 2026 and Q1 2025?
+Data: [{"kpi":"meaningful","2025 Q1":147.8,"2026 Q1":153.2,"delta":5.4},
+       {"kpi":"difference", "2025 Q1":93.2, "2026 Q1":95.1, "delta":2.0},
+       {"kpi":"salience",   "2025 Q1":214.9,"2026 Q1":202.4,"delta":-12.5},
+       {"kpi":"affinity_score","2025 Q1":55.1,"2026 Q1":54.4,"delta":-0.7}, ...]
+
+Q: What are the bip_market imageries for Brahma in Brazil in Q1 2026 and Q1 2025?
+Data: [{"imagery":"Brazilian way",             "2025 Q1":22.9,"2026 Q1":20.8,"delta":-2.1},
+       {"imagery":"You like to share with your friends","2025 Q1":4.9,"2026 Q1":3.7,"delta":-1.3},
+       {"imagery":"It's a fun brand",           "2025 Q1":3.5,"2026 Q1":2.5,"delta":-1.0},
+       {"imagery":"Is loved by beer enthusiasts","2025 Q1":2.4,"2026 Q1":0.7,"delta":-1.7}, ...]
+
+Q: What are the consideration, trial, consumption_past_seven_days, consumption_past_four_weeks,
+   and consumption_past_three_months of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?
+Data: [{"kpi":"trial",                      "Q1 2025":87.8,"Q4 2025":89.2,"Q1 2026":88.7},
+       {"kpi":"consumption_past_seven_days", "Q1 2025":30.4,"Q4 2025":29.8,"Q1 2026":27.5},
+       {"kpi":"consumption_past_four_weeks", "Q1 2025":48.0,"Q4 2025":46.3,"Q1 2026":44.3},
+       {"kpi":"consumption_past_three_months","Q1 2025":62.7,"Q4 2025":61.5,"Q1 2026":60.6}]
+
+Q: What are the power, meaningful, difference, and salience of Brahma in Brazil in Q1 2026
+   across age, gender, income, and region cohorts?
+Data: [{"region":"Rio de Janeiro","kpi":"power","2025 Q1":20.0,"2026 Q1":17.9,"delta":-2.1},
+       {"region":"São Paulo",     "kpi":"power","2025 Q1":9.3, "2026 Q1":8.2, "delta":-1.2},
+       {"region":"Nordeste",      "kpi":"power","2025 Q1":13.0,"2026 Q1":14.4,"delta":+1.4}, ...]</pre>
+    </div>
+
+    <div class="step">
       <div class="step-head"><span class="step-node">Decision Consultant</span></div>
-      <p>Reviews the round-1 ledger against the original query.</p>
-      <pre>relevant_probes: ["P1", "P2", "P3"]
-irrelevant_probes: []
+      <pre>confidence: 0.81
 
 remaining_gaps: [
-  { description: "Why did Corona specifically decline 25% in East China during Q1?", category: "open" },
-  { description: "Is the price/mix shift driven by promotions, channel mix, or list price changes?", category: "open" }
+  { description: "Overall Q1 2026 performance level is addressed at topline via power and funnel metrics.",
+    category: "closed" },
+  { description: "QoQ and YoY context only partially covered: most equity KPIs compared vs Q1 2025
+    only, not Q4 2025.", category: "partial" },
+  { description: "Drivers partially explained via meaningful/difference/salience shifts and imagery,
+    but no explicit decomposition tying drivers to net power change.", category: "partial" },
+  { description: "Consumer behavior partially covered — trial and consumption included, but
+    consideration data was missing from one probe.", category: "partial" },
+  { description: "Competitive context versus other brands in Brazil in Q1 2026 not addressed.",
+    category: "open" },
+  { description: "Statistical significance of observed changes not provided.", category: "open" }
 ]
 
 new_hypotheses: [
-  { id: "H4", description: "A Corona-specific distribution or promotion issue in East China", status: "open" }
-]
-confidence: 0.55</pre>
-    </div>
-
-    <div class="step">
-      <div class="step-head"><span class="step-node">Decision Engine</span></div>
-      <p>Computes the weighted incremental-value score and checks stop conditions.</p>
-      <pre>expected_incremental_value: 0.42   (stop_threshold = 0.35 → still worth another round)
-stop_reason: "continue"
-
-recommended_next_gap: "Why did Corona specifically decline 25% in East China during Q1?"
-reason: "This gap is both the largest single contributor identified so far (H4) and
-  directly actionable; the price/mix gap is lower priority until H4 is resolved."</pre>
-    </div>
-
-    <div class="loop-arrow">↻ <code>continue</code> — loop back to Planner Consultant, focused on the recommended gap</div>
-  </details>
-
-  <details class="round-block">
-    <summary>Round 2 — follow-up on the Corona gap <span class="round-tag stop">stop</span></summary>
-
-    <div class="step">
-      <div class="step-head"><span class="step-node">Planner Consultant</span></div>
-      <p>Given <code>evidence_ledger</code>, <code>remaining_gaps</code> and
-        <code>recommended_next_gap</code> from round 1, focuses the new probes on H4
-        rather than re-planning from scratch -- still purely directional, with no
-        mention of Brand names, KPIs or units.</p>
-      <pre>objective: "Determine why the worst-performing portfolio segment declined disproportionately in East China in Q1."
-
-hypotheses: [
-  { id: "H1", description: "Overall sales activity fell in East China", status: "supported" },
-  { id: "H2", description: "The typical price or mix of what's sold shifted", status: "supported" },
-  { id: "H3", description: "One part of the portfolio drove most of the decline", status: "supported" },
-  { id: "H4", description: "That segment has its own distribution or promotion issue in East China", status: "open" }
-]
-
-probe_candidates: [
-  { id: "P4", goal: "Has anything changed in how the worst-performing segment is distributed or promoted in East China?",
-    expected_value: "high", reason: "Directly tests H4, the recommended gap." },
-  { id: "P5", goal: "Have there been any pricing or commercial-term changes specific to that segment in East China?",
-    expected_value: "medium", reason: "Covers the remaining price/mix gap as it relates to that segment." }
-]
-success_criteria: "H4 is confirmed or refuted with a specific driver, and the price/mix
-  gap is at least partially addressed."
-open_questions: []</pre>
-    </div>
-
-    <div class="step">
-      <div class="step-head"><span class="step-node">Planner</span></div>
-      <p>Knows from round 1's evidence that the segment in question is the Brand
-        "Corona" -- rewrites both goals naming that Brand explicitly.</p>
-      <pre>assignments: [
-  { probe_candidate_id: "P4",
-    question: "Did Corona's distribution coverage or promotional activity in the Region East China change in Q1 vs. prior-year Q1?",
-    usecase: "brand_guidance", reason: "Distribution/promotion coverage is brand-level marketing data." },
-  { probe_candidate_id: "P5",
-    question: "Were there any Corona-specific price or trade-term changes affecting Revenue in East China during Q1?",
-    usecase: "category", reason: "Pricing and trade terms are category/sales data." }
-]
-→ tool_calls: [P4, P5]  (2 of 6 probes this round; 5 total so far)</pre>
-    </div>
-
-    <div class="step">
-      <div class="step-head"><span class="step-node">Execution</span></div>
-      <pre>evidence_ledger += [
-  { probe_id: "P4", result: "Corona's weighted distribution in East China dropped from 78% to 65% in Q1 after a
-    distributor transition in February; this accounts for most of the brand-level volume loss.",
-    relevance_score: 0.92, gap_closed: true },
-  { probe_id: "P5", result: "No Corona-specific list-price or trade-term changes were recorded in East China during Q1.",
-    relevance_score: 0.70, gap_closed: false }
+  { id: "H1", description: "Softer Q1 2026 driven by declining salience — meaningful/difference
+    improved while salience fell sharply.", status: "open" },
+  { id: "H2", description: "National decline disproportionately caused by weakness in Rio de
+    Janeiro and São Paulo, partially offset by gains in Nordeste.", status: "open" },
+  { id: "H3", description: "Usage erosion from reduced frequency among existing consumers more
+    than collapse in trial or broad consideration.", status: "open" },
+  { id: "H4", description: "Erosion in social/cultural imagery (Brazilian way, sharing, fun)
+    contributed to lower salience and recent consumption.", status: "open" }
 ]</pre>
     </div>
 
     <div class="step">
-      <div class="step-head"><span class="step-node">Decision Consultant</span></div>
-      <pre>remaining_gaps: [
-  { description: "Why did Corona specifically decline 25% in East China during Q1?", category: "closed" },
-  { description: "Is the price/mix shift driven by promotions, channel mix, or list price changes?", category: "partial" }
+      <div class="step-head"><span class="step-node">Decision Engine</span></div>
+      <pre>expected_incremental_value: 0.86   (above stop_threshold — another round worth running)
+stop_reason: "continue"
+value_breakdown: { evidence_coverage:1, confidence:0.81, remaining_gaps_score:0.857,
+                   alternative_hypotheses_score:1, probe_cost_score:0.375 }
+
+recommended_next_gap: "Competitive context versus other brands in Brazil in Q1 2026 is not
+  addressed — cannot tell whether Brahma underperformed the market or followed category trends."
+reason: "Most decision-critical unresolved gap: current evidence explains Brahma's internal
+  shifts but not whether the decline is brand-specific. With only 3 probes left in budget,
+  competitive context would most improve the usefulness of the overall answer."</pre>
+    </div>
+
+    <div class="loop-arrow">↻ <code>continue</code> — loop back to Planner Consultant, focused on competitive context</div>
+  </details>
+
+  <details class="round-block">
+    <summary>Round 2 — competitive context + gap closure <span class="round-tag stop">stop</span></summary>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Planner Consultant</span></div>
+      <p>Given full round-1 ledger, remaining gaps, and <code>recommended_next_gap</code>,
+        focuses new probes on competitive context and the two specific partial gaps
+        (Q4 2025 equity comparison + missing consideration data).</p>
+      <pre>objective: "Establish whether Brahma's Q1 2026 softness was brand-specific or market-wide,
+  and close the most decision-relevant remaining gaps."
+
+hypotheses: [
+  { id: "H1", description: "Brahma's Q1 2026 performance softened — salience and usage declined
+    while meaningful/difference improved.", status: "supported" },
+  { id: "H2", description: "Brahma's apparent softness is at least partly market-wide rather than
+    uniquely brand-specific.", status: "open" },
+  { id: "H3", description: "A clearer QoQ read on core equity would show whether Q1 2026 reflects
+    a recent deterioration or a longer-running YoY pattern.", status: "open" },
+  { id: "H4", description: "Missing consideration data could materially change the interpretation
+    of how healthy Brahma's Q1 2026 demand pipeline was.", status: "open" }
 ]
-new_hypotheses: []
-confidence: 0.78</pre>
+
+probe_candidates: [
+  { id: "P6", goal: "How did Brahma's overall brand performance in Brazil in Q1 2026 compare
+    with key competitor brands in the same market and period?",
+    expected_value: "high", reason: "Directly addresses H2 and the recommended next gap." },
+  { id: "P7", goal: "Did Brahma gain or lose relative standing in Brazil in Q1 2026 vs Q1 2025
+    and Q4 2025 across overall brand strength, mental availability, and recent consumer
+    engagement, compared with competitors?",
+    expected_value: "high", reason: "Trend-based competitive context is more informative than a
+    single-period snapshot." },
+  { id: "P8", goal: "How did Brahma's core brand equity dimensions in Brazil change from Q4 2025
+    to Q1 2026?",
+    expected_value: "medium", reason: "Addresses H3 — QoQ equity change not covered in round 1." },
+  { id: "P9", goal: "How did consumer consideration for Brahma in Brazil change across Q1 2026,
+    Q4 2025, and Q1 2025?",
+    expected_value: "medium", reason: "Closes specifically identified missing funnel gap (H4)." }
+]</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Planner</span></div>
+      <p>Round-1 questions passed as <code>asked_questions</code>. P7's multi-brand
+        trend request subsumes P6's single-period snapshot; P6 kept as narrower
+        current-period all-brands power fetch for direct ranking.</p>
+      <pre>asked_questions (round 1, all deduped):
+  "What is the power of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?"
+  "What are the meaningful, difference, salience, ... of Brahma in Brazil in Q1 2026 and Q1 2025?"
+  "What are the bip_market imageries for Brahma in Brazil in Q1 2026 and Q1 2025?"
+  "What are the consideration, trial, consumption_past_seven_days, ... of Brahma in Brazil ..."
+  "What are the power, meaningful, difference, and salience of Brahma in Brazil in Q1 2026
+   across age, gender, income, and region cohorts?"
+
+assignments: [
+  { probe_candidate_id: "P6",
+    questions: ["What is the power of all brands in Brazil in Q1 2026?"],
+    usecase: "brand_guidance",
+    reason: "All-brands fetch returns Brahma alongside competitors — data-fetch, not 'compare' task." },
+  { probe_candidate_id: "P7",
+    questions: ["What are the power, salience, and consumption_past_four_weeks of all brands
+                 in Brazil in Q1 2026, Q4 2025, and Q1 2025?"],
+    usecase: "brand_guidance",
+    reason: "Multi-period all-brands fetch enables trend-based competitive read; P6 not subsumed
+             (different KPI set)." },
+  { probe_candidate_id: "P8",
+    questions: ["What are the meaningful, difference, and salience of Brahma in Brazil in Q4 2025
+                 and Q1 2026?"],
+    usecase: "brand_guidance",
+    reason: "QoQ equity gap: Q4 2025 not covered for these KPIs in round 1." },
+  { probe_candidate_id: "P9",
+    questions: ["What is the consideration of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?"],
+    usecase: "brand_guidance",
+    reason: "Consideration was missing from round-1 probe; not a duplicate." }
+]
+→ tool_calls: [P6, P7, P8, P9]  (4 of 5 this round; 9 total — budget reached)</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Execution</span></div>
+      <pre>Q: What is the power of all brands in Brazil in Q1 2026?
+Data: [{"brand":"Heineken",       "2025 Q1":null,"2026 Q1":14.2,"delta":null},
+       {"brand":"Brahma",         "2025 Q1":13.2,"2026 Q1":12.9,"delta":-0.3},
+       {"brand":"Skol Pilsen",    "2025 Q1":null,"2026 Q1":9.3, "delta":null},
+       {"brand":"Amstel Lager",   "2025 Q1":5.0, "2026 Q1":5.6, "delta":0.6},
+       {"brand":"Budweiser",      "2025 Q1":null,"2026 Q1":5.5, "delta":null},
+       {"brand":"Corona Extra",   "2025 Q1":null,"2026 Q1":4.8, "delta":null}, ...]
+
+Q: What are the power, salience, and consumption_past_four_weeks of all brands in Brazil
+   in Q1 2026, Q4 2025, and Q1 2025?
+Data: [{"brand":"Heineken","kpi":"power",                   "Q1 2025":null,"Q4 2025":null,"Q1 2026":14.2},
+       {"brand":"Heineken","kpi":"salience",                "Q1 2025":null,"Q4 2025":null,"Q1 2026":201.7},
+       {"brand":"Heineken","kpi":"consumption_past_four_weeks","Q1 2025":null,"Q4 2025":null,"Q1 2026":49.7},
+       {"brand":"Brahma",  "kpi":"power",                   "Q1 2025":13.2,"Q4 2025":13.2,"Q1 2026":12.9},
+       {"brand":"Brahma",  "kpi":"consumption_past_four_weeks","Q1 2025":48.0,"Q4 2025":46.3,"Q1 2026":44.3}, ...]
+
+Q: What are the meaningful, difference, and salience of Brahma in Brazil in Q4 2025 and Q1 2026?
+Data: [{"kpi":"meaningful","Q4 2025":151.1,"Q1 2026":153.2,"delta":2.1},
+       {"kpi":"difference", "Q4 2025":93.5, "Q1 2026":95.1, "delta":1.6},
+       {"kpi":"salience",   "Q4 2025":211.5,"Q1 2026":202.4,"delta":-9.1}]
+
+Q: What is the consideration of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?
+Data: [{"sub_kpi":"It would be my first choice",       "Q1 2025":41.7,"Q4 2025":42.1,"Q1 2026":40.3},
+       {"sub_kpi":"I would seriously consider it",     "Q1 2025":23.9,"Q4 2025":23.8,"Q1 2026":24.1},
+       {"sub_kpi":"I might consider it",               "Q1 2025":17.8,"Q4 2025":17.5,"Q1 2026":17.6},
+       {"sub_kpi":"I would not consider it",           "Q1 2025":14.0,"Q4 2025":14.5,"Q1 2026":15.9},
+       {"sub_kpi":"Not aware",                         "Q1 2025":2.5, "Q4 2025":2.2, "Q1 2026":2.1}]</pre>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-node">Decision Consultant</span></div>
+      <pre>confidence: 0.83
+
+remaining_gaps: [
+  { description: "Overall Q1 2026 performance level established: power 12.9, down from 13.2 in
+    both Q4 2025 and Q1 2025.", category: "closed" },
+  { description: "Equity drivers largely established: meaningful +5.4 YoY, difference +2.0 YoY,
+    salience -12.5 YoY.", category: "closed" },
+  { description: "Consumer funnel substantially addressed: trial stable (88.7), consumption fell
+    across all windows, first-choice consideration dipped to 40.3, non-consideration rose to 15.9.",
+    category: "closed" },
+  { description: "Competitive context addressed for power, salience, 4-week consumption: Brahma
+    is top-tier but trails Heineken (14.2) on power and 4-week usage (49.7 vs 44.3).",
+    category: "partial" },
+  { description: "Image/perception shifts partially addressed via bip_market imagery — softness on
+    Brazilian way, fun, sharing associations; gains in sophistication and brewing craft.", category: "partial" },
+  { description: "Segment-level performance partially covered: RJ/SP/Sul weakening, Nordeste
+    resilient.", category: "partial" },
+  { description: "No causal decomposition tying salience/imagery changes to usage declines.",
+    category: "open" },
+  { description: "Statistical significance of observed changes not provided.", category: "open" }
+]</pre>
     </div>
 
     <div class="step">
       <div class="step-head"><span class="step-node">Decision Engine</span></div>
-      <pre>expected_incremental_value: 0.22   (below stop_threshold = 0.35)
-stop_reason: "incremental_value_below_threshold"
-continue_: false</pre>
+      <pre>expected_incremental_value: 0.78   (would normally continue, but budget exhausted)
+stop_reason: "max_total_probes_reached"   // 9 probes used = max_total_probes
+continue_: false
+value_breakdown: { evidence_coverage:1, confidence:0.83, remaining_gaps_score:0.625,
+                   alternative_hypotheses_score:1, probe_cost_score:0 }</pre>
     </div>
 
-    <div class="loop-arrow stop">■ <code>stop</code> — proceed to the Synthesizer</div>
+    <div class="loop-arrow stop">■ <code>stop</code> (max_total_probes_reached) — proceed to Synthesizer</div>
   </details>
 
   <details class="round-block">
     <summary>Final report — Synthesizer</summary>
     <div class="step">
-      <p>Given the full 2-round ledger, the latest Decision Consultant output, and
-        <code>stop_reason = "incremental_value_below_threshold"</code>, the Synthesizer
-        writes the markdown report:</p>
+      <p>Full 9-entry ledger + Decision Consultant output + <code>stop_reason =
+        "max_total_probes_reached"</code>. Synthesizer writes a clean
+        business-facing report — no probe IDs, no round counts, no system metadata.</p>
       <pre>## Summary
-East China Revenue fell 18% YoY in Q1 (1.56B → 1.28B CNY), driven by a 12% Volume
-decline and a 7% drop in Revenue per hectoliter (price/mix shift). Corona accounted
-for a disproportionate share of the decline due to a distribution coverage drop.
+Brahma in Brazil had a slightly weaker Q1 2026. Brand power fell to 12.9 from 13.2 in
+both Q4 2025 and Q1 2025. Critically, this was not a story of weakening brand meaning
+or differentiation — both improved — but of declining salience and eroding recent
+consumption, which appear to be the main performance drag.
 
 ## Key Findings
-| Metric                  | Prior-year Q1 | Q1 (current) | Change |
-|-------------------------|--------------:|-------------:|-------:|
-| Volume (hL)             | 1.84M         | 1.62M         | -12%   |
-| Revenue (CNY)           | 1.56B         | 1.28B         | -18%   |
-| Revenue per hL (CNY)    | 850           | 790           | -7%    |
-| Corona Revenue (YoY)    | —             | —             | -25%   |
+| KPI                          | Q1 2025 | Q4 2025 | Q1 2026 | vs Q1 2025 | vs Q4 2025 |
+|------------------------------|--------:|--------:|--------:|-----------:|-----------:|
+| Power                        | 13.2    | 13.2    | 12.9    | −0.3       | −0.3       |
+| Meaningful                   | 147.8   | 151.1   | 153.2   | +5.4       | +2.1       |
+| Difference                   | 93.2    | 93.5    | 95.1    | +2.0       | +1.6       |
+| Salience                     | 214.9   | 211.5   | 202.4   | −12.5      | −9.1       |
+| Trial                        | 87.8    | 89.2    | 88.7    | +0.9       | −0.5       |
+| Consumption past 7 days      | 30.4    | 29.8    | 27.5    | −2.9       | −2.3       |
+| Consumption past 4 weeks     | 48.0    | 46.3    | 44.3    | −3.7       | −2.0       |
+| Consumption past 3 months    | 62.7    | 61.5    | 60.6    | −2.1       | −0.9       |
+| Consideration — first choice | 41.7    | 42.1    | 40.3    | −1.4       | −1.8       |
+| Consideration — would not    | 14.0    | 14.5    | 15.9    | +1.9       | +1.4       |
+
+Competitive context (Q1 2026):
+| Brand          | Power | Salience | Consumption 4w |
+|----------------|------:|---------:|---------------:|
+| Heineken       | 14.2  | 201.7    | 49.7           |
+| **Brahma**     | **12.9** | **202.4** | **44.3**    |
+| Skol Pilsen    | 9.3   | 7.4      | 33.0           |
+| Amstel Lager   | 5.6   | 116.8    | 33.7           |
+| Budweiser      | 5.5   | 109.3    | 31.6           |
+
+Selected imagery shifts (Q1 2025 → Q1 2026):
+| Imagery                           | Q1 2025 | Q1 2026 | Δ    |
+|-----------------------------------|--------:|--------:|-----:|
+| Brazilian way                     | 22.9    | 20.8    | −2.1 |
+| You like to share with friends    | 4.9     | 3.7     | −1.3 |
+| Is loved by beer enthusiasts      | 2.4     | 0.7     | −1.7 |
+| It's a fun brand                  | 3.5     | 2.5     | −1.0 |
+
+Regional power shifts:
+| Region         | Q1 2025 | Q1 2026 | Δ    |
+|----------------|--------:|--------:|-----:|
+| Brazil total   | 13.2    | 12.9    | −0.3 |
+| Rio de Janeiro | 20.0    | 17.9    | −2.1 |
+| São Paulo      | 9.3     | 8.2     | −1.2 |
+| Nordeste       | 13.0    | 14.4    | +1.4 |
 
 ## Evidence
-- P1: East China Volume/Revenue trend (relevance 0.95)
-- P2: Revenue per hectoliter trend (relevance 0.90)
-- P3: Corona Revenue decline vs. portfolio (relevance 0.85)
-- P4: Corona distribution coverage 78% → 65% after distributor transition (relevance 0.92)
-- P5: No Corona-specific pricing changes found (relevance 0.70)
+All figures sourced from brand guidance retrieval across 9 probes covering power,
+equity drivers, BIP imagery, usage funnel, demographic cohorts, and competitive
+all-brand data for Brazil Q1 2025 / Q4 2025 / Q1 2026.
 
 ## Recommendations
-- Prioritize restoring Corona's distribution coverage in East China with the new
-  distributor (target: back toward 78%).
-- Investigate the broader price/mix shift (channel mix vs. promotions) — currently
-  only partially explained.
+1. Prioritise salience recovery — the clearest issue is declining mental availability.
+   Focus on everyday purchase occasions rather than brand-building moments.
+2. Rebuild social/cultural cues — reinforce Brazilian identity, sharing, fun, and
+   beer-enthusiast associations where Brahma softened most.
+3. Defend frequency, not trial — trial is stable; target repeat usage through loyalty
+   and regular-occasion activation.
+4. Concentrate geographically — extra support for Rio de Janeiro and São Paulo; protect
+   momentum in Nordeste.
+5. Monitor first-choice consideration and non-consideration as leading indicators in the
+   next wave.
+6. Benchmark directly against Heineken on power and 4-week usage to understand the
+   conversion and frequency gap.
 
 ## Confidence
-0.7 — the volume and price/mix decomposition and the Corona distribution driver are
-well-supported (confidence 0.78 from the Decision Consultant), but the broader
-price/mix gap remains partial.
+0.75 — the headline result, direction of core KPIs, recent usage trends, and
+competitive context are well-established. Confidence is not higher because causality
+is not proven, several explanatory gaps remain partial, and no significance testing
+is available to separate real movement from noise in smaller cuts.
 
 ## Remaining Unknowns
-- Whether the price/mix shift is driven by promotions, channel mix, or list-price
-  changes remains only partially addressed.</pre>
-      <p class="confidence-line">confidence: <b>0.7</b></p>
+- Direct causal link between salience/imagery declines and usage erosion is directional
+  only — not proven by the available data.
+- Competitive context covers power, salience, and 4-week usage only; full competitor
+  equity diagnostics are not available.
+- Segment/cohort findings are directional; some cuts have missing values and may be
+  unstable at smaller sample sizes.
+- No statistical significance or sample-size information provided — treat small changes
+  (especially in imagery and granular cohorts) cautiously.</pre>
+      <p class="confidence-line">confidence: <b>0.75</b></p>
     </div>
   </details>
 </div>
@@ -546,8 +730,10 @@ const NODES = [
       <h3>Output</h3>
       <ul><li><code>objective</code>, <code>hypotheses[]</code>,
         <code>probe_candidates[]</code> (id, goal, expected_value, reason) --
-        each <code>goal</code> is a directional statement of what to check,
-        not a KPI-grounded question</li>
+        each <code>goal</code> is a directional statement of what to check
+        in plain business language — <b>no KPI names, metric names, column
+        names, or tool references permitted</b>; KPI selection is the
+        Planner's job</li>
       <li><code>success_criteria</code>, <code>open_questions</code></li></ul>
       <h3>Prompt structure</h3>
       <p>Static <code>SYSTEM_PROMPT</code> (tool-agnostic, no domain
@@ -560,38 +746,48 @@ const NODES = [
       output.)</p>` },
 
   { id: "planner", x: 750, y: 415, w: 170, h: 70, cls: "hybrid",
-    title: "Planner", sub: "grounds probe goals in domain KPIs + routes them",
+    title: "Planner", sub: "KPI selection · data-fetch questions · dedup",
     tag: "hybrid", tagLabel: "Hybrid (domain-grounded LLM call + logic)",
     body: `<p>The Planner Consultant's probe goals are directional and
-      domain-agnostic ("how has overall sales activity changed?"). The
-      Planner is the first component with real domain knowledge: it
-      rewrites each goal into a concrete, KPI/dimension-grounded
-      <code>question</code> (naming actual metrics like Revenue/Volume and
-      dimensions like Brand/Region from DOMAIN GUIDELINES), then routes that
-      question to a retrieval usecase. Finally it orders and caps the
-      round's probes.</p>
+      KPI-agnostic. The Planner is the first component with real domain
+      knowledge: it reads <code>question_format</code> to select the
+      right KPIs, then writes <b>data-fetch questions</b> the retrieval
+      service can parse and execute. It also enforces deduplication and
+      routes each question to a retrieval usecase.</p>
       <h3>Input</h3>
       <ul><li><code>probe_candidates</code> from the Planner Consultant
         (each with a directional <code>goal</code>)</li>
-      <li><code>usecase_docs</code> — knowledge docs describing what each
-        retrieval usecase can/can't answer (e.g.
-        <code>brand_guidance</code>, <code>category</code>)</li>
-      <li>DOMAIN GUIDELINES for the selected domain (metrics, datasets,
-        dimensions, terminology)</li></ul>
+      <li><code>question_format</code> — the retrieval service's NLP
+        extraction guide: valid KPI names, parameter-extraction rules,
+        example well-formed questions. <b>Authoritative reference</b> for
+        KPI selection.</li>
+      <li><code>usecase_docs</code> — knowledge docs for each usecase
+        (<code>brand_guidance</code>, <code>category</code>, …)</li>
+      <li><code>schema</code> — column-level metadata (optional)</li>
+      <li><code>asked_questions</code> — every question sent in previous
+        rounds (dedup guard)</li></ul>
+      <h3>KPI selection rules</h3>
+      <ul><li>Pick the <b>minimum</b> set (1–4 KPIs) that directly
+        covers the probe's directional intent — never dump all KPIs.</li>
+      <li>Group related KPIs into one question rather than separate
+        calls (e.g. <code>meaningful, difference, salience</code> in
+        one question).</li></ul>
+      <h3>Question-phrasing rules</h3>
+      <ul><li><b>Retrieval-oriented:</b> questions are data-fetch
+        requests ("What is/are X for Y in Z?"), not analytical tasks.
+        A comparison probe → fetch the data that covers both sides
+        (e.g. all brands, both periods) in one call.</li>
+      <li><b>Coverage subsumption:</b> if a broader question already
+        assigned in this batch returns a superset of what a narrower
+        probe needs, skip the narrower question.</li></ul>
       <h3>Output</h3>
       <ul><li><code>assignments[]</code> → <code>{probe_candidate_id,
-        question, usecase, reason}</code> — one rewritten, domain-grounded
-        question + usecase per probe candidate</li>
-      <li>mapped to <code>tool_calls[]</code> (using the rewritten
-        <code>question</code>), sorted by <code>expected_value</code> and
-        capped at <code>max_probes_per_round</code></li></ul>
-      <h3>Prompt structure</h3>
-      <p>Static <code>SYSTEM_PROMPT</code> (rewrite-then-route rules) +
-      <b>DOMAIN GUIDELINES</b> for the selected domain — this is the prompt
-      that actually needs the domain's KPI/dimension catalogue. The
-      <code>usecase_docs</code> themselves are passed dynamically in the
-      human message, not baked into the prompt — so new usecases can be
-      added without touching the prompt.</p>` },
+        questions[], usecase, reason}</code>. <code>questions</code> is
+        typically one data-fetch question; may be empty if subsumed by
+        an earlier question in the batch.</li>
+      <li>Flattened to <code>tool_calls[]</code>, deduplicated against
+        <code>asked_questions</code>, sorted by <code>expected_value</code>
+        and capped at <code>max_probes_per_round</code>.</li></ul>` },
 
   { id: "execution", x: 673, y: 650, w: 170, h: 70, cls: "logic",
     title: "Execution", sub: "calls the retrieval API for each probe",
@@ -604,8 +800,14 @@ const NODES = [
       <ul><li>new <code>EvidenceLedgerEntry</code> rows: <code>{probe_id,
         question, result, relevance_score, gap_closed, created_at,
         round_index}</code>, appended to <code>evidence_ledger</code></li></ul>
-      <p>No LLM here — this is a thin client over the retrieval service
-      (real HTTP client, or a mock that echoes the question for testing).</p>` },
+      <h3>Result format</h3>
+      <p><code>result</code> contains the full retrieval response:</p>
+      <ul><li>A <b>summary narrative</b> from the service's response
+        envelope.</li>
+      <li>Followed by a <b><code>Data:</code></b> section with the raw
+        SQL result rows as JSON — this is the ground-truth numbers used
+        by the Decision Consultant and Synthesizer.</li></ul>
+      <p>No LLM here — thin HTTP client (or mock for testing).</p>` },
 
   { id: "decision_consultant", x: 427, y: 650, w: 170, h: 70, cls: "llm",
     title: "Decision Consultant", sub: "LLM · evaluates the evidence so far (domain-agnostic)",
@@ -630,7 +832,11 @@ const NODES = [
       <p>Static <code>SYSTEM_PROMPT</code> (evaluation rules + output
       contract) + <b>DOMAIN GUIDELINES</b> for the selected domain. (Present
       for context, but the output contract keeps this component's findings
-      directional rather than KPI-specific.)</p>` },
+      directional rather than KPI-specific.)</p>
+      <p><b>Note on evidence:</b> each ledger entry's <code>result</code>
+      may contain a <code>Data:</code> section with raw SQL rows — the
+      prompt instructs this component to read those numbers directly
+      rather than relying solely on the summary narrative.</p>` },
 
   { id: "decision_engine", x: 350, y: 415, w: 170, h: 70, cls: "hybrid",
     title: "Decision Engine", sub: "scores value, decides continue/stop (domain-grounded)",
@@ -675,7 +881,13 @@ const NODES = [
       <h3>Prompt structure</h3>
       <p>Static <code>SYSTEM_PROMPT</code> defines the consultant-style
       writing rules (tables for comparable data, every number traceable to
-      the ledger) + <b>DOMAIN GUIDELINES</b> for the selected domain.</p>` },
+      the ledger, no probe IDs or system metadata in output) +
+      <b>DOMAIN GUIDELINES</b> for the selected domain.</p>
+      <p><b>Note on evidence:</b> each ledger entry's <code>result</code>
+      may contain a <code>Data:</code> section with raw SQL rows. The
+      prompt tells the Synthesizer to treat those rows as the
+      ground-truth source of numbers — the summary narrative may
+      omit or round values.</p>` },
 
   { id: "final_report", x: 130, y: 270, w: 170, h: 60, cls: "io",
     title: "Final Report", sub: "markdown + confidence",

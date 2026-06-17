@@ -1,0 +1,12 @@
+table_name,table_description
+BG_IMAGERY_DATA,The table contains brand level imageries and their response percentages. It also contains the BIP score at both segment level and overall market level
+BG_DIRECT_KPI_DATA,"The table contains power, meaningful, difference, salience, AMUD, Top of mind, tbca and worth cost at higher level"
+BG_SUB_LEVEL_DATA,"The table contains KPIs attached to a sub level such as consideration, imf, last_10_purchases, occasion_by_brand, occasion_first_brand, worth_imagery and cost imagery. These sub levels are mostly for the different questions corresponding to the particular KPI in the survey."
+BRAND_DIM,"The table contains brand attributes which are star schema foreign key to Direct, imagery and sub level tables"
+COHORT_DIM,The table contains demographic cohort attributes which are star schema foreign key to all tables
+TIME_DIM,The table contains year and period attributes which are star schema foreign key to all tables
+IMAGERY_DIM,The table contains imagery names which is star schema foreign key to only imagery_data table
+KPI_DIM,The table contains kpis and their sub-attributes which is star schema foreign key to only sub_level_data table
+BG_GLOBAL_BRANDS_KPI,"This table contains records for global brands (limited to Corona, michelob ultra, stella artois, budweiser and heineken). Use this table when one of these brands is mentioned and no country zone or market maturity is mentioned."
+BG_GLOBAL_MARKET_MATURITY_KPI,"This table contains records at market maturity level. Use when relevant market maturity (M1, M2, M3) is mentioned or across maturities is asked"
+BG_GLOBAL_ZONE_KPI,"This table contains records at zone level. Use when relevant zone (NAZ, MAZ, SAZ, AFR, APAC, EUR) is mentioned or across zones is asked"

@@ -29,9 +29,9 @@ def test_litellm_base_url_and_api_key_are_normalized():
 def test_load_probe_budget_settings_from_yaml():
     settings = load_probe_budget_settings("config/probe_budget.yaml")
 
-    assert settings.probe_budget.max_rounds == 5
-    assert settings.probe_budget.max_probes_per_round == 6
-    assert settings.probe_budget.max_total_probes == 20
+    assert settings.probe_budget.max_rounds == 3
+    assert settings.probe_budget.max_probes_per_round == 5
+    assert settings.probe_budget.max_total_probes == 8
 
     assert settings.score_fusion.bm25_weight == 0.5
     assert settings.score_fusion.embedding_weight == 0.5

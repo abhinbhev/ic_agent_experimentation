@@ -1,20 +1,18 @@
 # Similar Plan corpus -- archetypes only (reasoning/probe patterns), never
-# answers or data. This is a placeholder corpus illustrating the
-# SimilarPlanEntry schema; add more archetypes as they are identified.
+# answers or data. Add more archetypes as they are identified.
 
-- id: root_cause_metric_change
-  intent: "explain change in metric"
-  dataset_family: ["Sales", "Revenue", "Pricing", "Portfolio"]
-  analysis_type: "root_cause_analysis"
+- id: brand_country_period_performance
+  intent: "How is a brand's performance in a country in a given period?"
+  dataset_family: ["Brand Guidance"]
+  analysis_type: "brand_performance_overview"
   probe_sequence:
-    - "trend"
-    - "decomposition"
-    - "segment analysis"
-    - "driver analysis"
-  failure_modes:
-    - "missing baseline"
-    - "premature attribution"
-  stop_condition: "top drivers explain majority of change"
+    - "change in equity"
+    - "factors affecting equity"
+    - "perceptions of the brand"
+    - "consumption"
+    - "demographic insights"
+  failure_modes: []
+  stop_condition: "all 5 probe areas covered with no major remaining gaps"
   description: >
-    Use when the user asks why a metric (e.g. revenue or volume) increased
-    or decreased over a period and wants the primary drivers identified.
+    Use when the user asks generally how a brand is performing in a given
+    country over a given period (a brand health / brand guidance check).

@@ -38,8 +38,8 @@ def test_tool_calls_capped_and_ordered_by_expected_value(sample_domain_config):
         sample_domain_config,
         ProbeBudgetConfig(max_probes_per_round=2),
         assignments=[
-            ProbeUsecaseAssignment(probe_candidate_id="P2", question="rewritten high value", usecase="brand_guidance", reason="r"),
-            ProbeUsecaseAssignment(probe_candidate_id="P3", question="rewritten medium value", usecase="category", reason="r"),
+            ProbeUsecaseAssignment(probe_candidate_id="P2", questions=["rewritten high value"], usecase="brand_guidance", reason="r"),
+            ProbeUsecaseAssignment(probe_candidate_id="P3", questions=["rewritten medium value"], usecase="category", reason="r"),
         ],
     )
 
@@ -62,8 +62,8 @@ def test_tool_call_ids_are_unique(sample_domain_config):
         sample_domain_config,
         ProbeBudgetConfig(max_probes_per_round=6),
         assignments=[
-            ProbeUsecaseAssignment(probe_candidate_id="P1", question="q1", usecase="brand_guidance", reason="r"),
-            ProbeUsecaseAssignment(probe_candidate_id="P2", question="q2", usecase="brand_guidance", reason="r"),
+            ProbeUsecaseAssignment(probe_candidate_id="P1", questions=["q1"], usecase="brand_guidance", reason="r"),
+            ProbeUsecaseAssignment(probe_candidate_id="P2", questions=["q2"], usecase="brand_guidance", reason="r"),
         ],
     )
 
@@ -86,3 +86,51 @@ def test_missing_assignment_falls_back_to_default_usecase(sample_domain_config):
     output = service.run(PlannerInput(consultant_plan=plan))
 
     assert output.tool_calls[0].usecase == "brand_guidance"
+
+
+def test_one_assignment_can_expand_to_multiple_tool_calls(sample_domain_config):
+    plan = _consultant_plan(
+        ProbeCandidate(id="P1", goal="overall brand health", expected_value="high", reason="r"),
+    )
+    service = _planner_service(
+        sample_domain_config,
+        ProbeBudgetConfig(max_probes_per_round=6),
+        assignments=[
+            ProbeUsecaseAssignment(
+                probe_candidate_id="P1",
+                questions=["What is the Power of Brand X in Country Y?", "What is the Salience of Brand X in Country Y?"],
+                usecase="brand_guidance",
+                reason="split by KPI",
+            ),
+        ],
+    )
+
+    output = service.run(PlannerInput(consultant_plan=plan))
+
+    assert len(output.tool_calls) == 2
+    assert {tc.related_probe_candidate_id for tc in output.tool_calls} == {"P1"}
+    assert len({tc.probe_id for tc in output.tool_calls}) == 2
+    questions = {tc.question for tc in output.tool_calls}
+    assert questions == {"What is the Power of Brand X in Country Y?", "What is the Salience of Brand X in Country Y?"}
+
+
+def test_expanded_tool_calls_are_capped_at_max_probes_per_round(sample_domain_config):
+    plan = _consultant_plan(
+        ProbeCandidate(id="P1", goal="overall brand health", expected_value="high", reason="r"),
+    )
+    service = _planner_service(
+        sample_domain_config,
+        ProbeBudgetConfig(max_probes_per_round=1),
+        assignments=[
+            ProbeUsecaseAssignment(
+                probe_candidate_id="P1",
+                questions=["question 1", "question 2", "question 3"],
+                usecase="brand_guidance",
+                reason="split by KPI",
+            ),
+        ],
+    )
+
+    output = service.run(PlannerInput(consultant_plan=plan))
+
+    assert len(output.tool_calls) == 1

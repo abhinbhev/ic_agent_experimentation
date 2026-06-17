@@ -1,0 +1,86 @@
+table_name,column_name,column_description
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,time_id,Foreign key for TIME_DIM table
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,cohort_id,Foreign key for COHORT_DIM table
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,brand_family,Name of brand family
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,country,Name of country
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,abi_comp,ABI or Competitor
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,price_segment,"Price segment category (e.g., premium, value)"
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,is_global,Whether the brand is global (boolean flag)
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,is_alcohol,Whether the brand is alcoholic (boolean flag)
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,life_cycle,"Strategy type (megabrand, tail, sustain or expansion)"
+BG_DIRECT_KPI_BRAND_FAMILY_FACT,power,Power KPI value
+BG_DIRECT_KPI_FACT,time_id,Foreign key for TIME_DIM table
+BG_DIRECT_KPI_FACT,brand_id,Foreign key for BRAND_DIM table
+BG_DIRECT_KPI_FACT,cohort_id,Foreign key for COHORT_DIM table
+BG_DIRECT_KPI_FACT,power,Power KPI value
+BG_DIRECT_KPI_FACT,meaningful,Meaningful KPI value
+BG_DIRECT_KPI_FACT,difference,Difference KPI value
+BG_DIRECT_KPI_FACT,salience,Salience KPI value
+BG_DIRECT_KPI_FACT,affinity_score,Affinity score KPI value
+BG_DIRECT_KPI_FACT,meet_need,Meet need KPI value
+BG_DIRECT_KPI_FACT,unique_score,Unique score KPI value
+BG_DIRECT_KPI_FACT,dynamic_score,Dynamic score KPI value
+BG_DIRECT_KPI_FACT,consumption_past_seven_days,Brand consumption in past 7 days
+BG_DIRECT_KPI_FACT,consumption_past_four_weeks,Brand consumption in past 4 weeks
+BG_DIRECT_KPI_FACT,consumption_past_three_months,Brand consumption in past 3 months
+BG_DIRECT_KPI_FACT,trial,Trial KPI value
+BG_DIRECT_KPI_FACT,awareness,Awareness KPI value
+BG_DIRECT_KPI_FACT,total_spontaneous_awareness,Total spontaneous awareness value
+BG_DIRECT_KPI_FACT,heard_never_drunk,Heard of brand but never drunk it value
+BG_DIRECT_KPI_FACT,never_seen_or_heard,Never seen or heard of the brand value
+BG_DIRECT_KPI_FACT,total_brand_communication_awareness,Awareness of brand communication
+BG_DIRECT_KPI_FACT,top_of_mind,Top-of-mind awareness
+BG_DIRECT_KPI_FACT,worth,Perceived worth KPI value aggregated
+BG_DIRECT_KPI_FACT,cost,Perceived cost KPI value aggregated
+BG_IMAGERY_FACT,time_id,Foreign key for TIME_DIM table
+BG_IMAGERY_FACT,brand_id,Foreign key for BRAND_DIM table
+BG_IMAGERY_FACT,cohort_id,Foreign key for COHORT_DIM table
+BG_IMAGERY_FACT,imagery_id,Foreign key for IMAGERY_DIM table
+BG_IMAGERY_FACT,response_percent,Percent of respondents associating brand with imagery
+BG_IMAGERY_FACT,bip_market,BIP (brand imagery performance) in market identifier
+BG_SUB_LEVEL_FACT,time_id,Foreign key for TIME_DIM table
+BG_SUB_LEVEL_FACT,brand_id,Foreign key for BRAND_DIM table
+BG_SUB_LEVEL_FACT,cohort_id,Foreign key for COHORT_DIM table
+BG_SUB_LEVEL_FACT,kpi_id,Foreign key for KPI_DIM table
+BG_SUB_LEVEL_FACT,value,Value of sub-level KPI
+BRAND_DIM,brand_id,Unique identifier for brand
+BRAND_DIM,brand,Name of brand
+BRAND_DIM,country,Country associated with brand
+BRAND_DIM,abi_comp,ABI or Competitor
+BRAND_DIM,price_segment,Price segment of brand
+BRAND_DIM,is_global,Whether brand is global (boolean flag)
+BRAND_DIM,is_alcohol,Whether brand is alcoholic (boolean flag)
+BRAND_DIM,life_cycle,"Strategy type (megabrand, tail, sustain or expansion)"
+COHORT_DIM,cohort_id,Unique identifier for cohort
+COHORT_DIM,age,Age group of cohort
+COHORT_DIM,gender,Gender of cohort
+COHORT_DIM,income,Income group of cohort
+COHORT_DIM,region,Region associated with cohort
+IMAGERY_DIM,imagery_id,Unique identifier for imagery item
+IMAGERY_DIM,imagery,Description of imagery attribute
+KPI_DIM,kpi_id,Unique identifier for KPI
+KPI_DIM,kpi,Name of KPI
+KPI_DIM,sub_kpi,Subcategory of KPI
+TIME_DIM,time_id,Unique identifier for time
+TIME_DIM,period_type,"Type of period (e.g., QTR, YTD, half year etc)"
+TIME_DIM,period,Period name
+TIME_DIM,year,Calendar year
+BG_GLOBAL_BRANDS_KPI,time_id,Foreign key for TIME_DIM table
+BG_GLOBAL_BRANDS_KPI,cohort_id,Foreign key for COHORT_DIM table
+BG_GLOBAL_BRANDS_KPI,global_brand,"Name of Global Brand. Used when no country, zone or market maturity is mentioned"
+BG_GLOBAL_BRANDS_KPI,with_home_market,boolean filter for whether home market of global brand has to be included or not
+BG_GLOBAL_BRANDS_KPI,power,Power KPI value
+BG_GLOBAL_MARKET_MATURITY_KPI,time_id,Foreign key for TIME_DIM table
+BG_GLOBAL_MARKET_MATURITY_KPI,cohort_id,Foreign key for COHORT_DIM table
+BG_GLOBAL_MARKET_MATURITY_KPI,market_maturity,"maturity of market, exhaustive values are M1, M2, M3"
+BG_GLOBAL_MARKET_MATURITY_KPI,abi_comp,ABI or Competitor
+BG_GLOBAL_MARKET_MATURITY_KPI,life_cycle,"Strategy type (megabrand, tail, sustain or expansion)"
+BG_GLOBAL_MARKET_MATURITY_KPI,price_segment,"Price segment category (e.g., premium, value)"
+BG_GLOBAL_MARKET_MATURITY_KPI,power,Power KPI value
+BG_GLOBAL_ZONE_KPI,time_id,Foreign key for TIME_DIM table
+BG_GLOBAL_ZONE_KPI,cohort_id,Foreign key for COHORT_DIM table
+BG_GLOBAL_ZONE_KPI,zone,"Geographical zone, exhaustive values are NAZ, MAZ, SAZ, AFR, APAC, EUR"
+BG_GLOBAL_ZONE_KPI,abi_comp,ABI or Competitor
+BG_GLOBAL_ZONE_KPI,life_cycle,"Strategy type (megabrand, tail, sustain or expansion)"
+BG_GLOBAL_ZONE_KPI,price_segment,"Price segment category (e.g., premium, value)"
+BG_GLOBAL_ZONE_KPI,power,Power KPI value

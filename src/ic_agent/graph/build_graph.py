@@ -13,7 +13,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from ic_agent.config.probe_budget import load_probe_budget_settings
 from ic_agent.config.settings import Settings, get_settings
-from ic_agent.config.usecase_docs import load_usecase_docs
+from ic_agent.config.usecase_docs import load_question_format_doc, load_schema_doc, load_usecase_docs
 from ic_agent.graph.edges import route_after_decision_engine
 from ic_agent.graph.nodes import (
     make_decision_consultant_node,
@@ -47,12 +47,16 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
         embedding_backend=get_embedding_backend(settings),
     )
     planner_consultant_service = PlannerConsultantService(get_chat_model(settings))
-    usecase_docs = load_usecase_docs(settings.usecase_docs_dir)
+    usecase_docs = load_usecase_docs(domain_config.domain_id, settings.usecase_docs_dir)
+    schema_doc = load_schema_doc(domain_config.domain_id, settings.usecase_docs_dir)
+    question_format_doc = load_question_format_doc(domain_config.domain_id, settings.usecase_docs_dir)
     planner_service = PlannerService(
         domain_config,
         usecase_docs,
         get_chat_model(settings),
         probe_budget=budget_settings.probe_budget,
+        schema_doc=schema_doc,
+        question_format_doc=question_format_doc,
     )
     retrieval_service = RetrievalService()
     decision_consultant_service = DecisionConsultantService(domain_config, get_chat_model(settings))

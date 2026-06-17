@@ -8,10 +8,12 @@ scaffold there is exactly one tool (``retrieval_query``).
 The Planner Consultant proposes probe candidates as domain-agnostic,
 directional goals (it knows nothing about KPIs or datasets). For each
 candidate, the Planner uses the domain context to (1) rewrite the goal
-into a concrete, KPI/dimension-grounded ``question`` that the retrieval
-layer can act on, and (2) assign it to a retrieval ``usecase`` (see
+into one or more concrete, KPI/dimension-grounded ``questions`` that the
+retrieval layer can act on -- splitting into multiple simple, single-KPI
+questions where the goal would otherwise require a compound question --
+and (2) assign it to a retrieval ``usecase`` (see
 ``ic_agent.models.retrieval.Usecase``) using its own usecase knowledge
-docs.
+docs and schema metadata.
 """
 
 from pydantic import BaseModel, Field
@@ -27,10 +29,12 @@ class ToolCall(BaseModel):
     related_hypothesis_ids: list[str] = Field(default_factory=list)
     related_probe_candidate_id: str
     usecase: Usecase = "brand_guidance"
+    reason: str = ""
 
 
 class PlannerInput(BaseModel):
     consultant_plan: PlannerConsultantOutput
+    asked_questions: list[str] = Field(default_factory=list)
 
 
 class PlannerOutput(BaseModel):
@@ -39,7 +43,7 @@ class PlannerOutput(BaseModel):
 
 class ProbeUsecaseAssignment(BaseModel):
     probe_candidate_id: str
-    question: str
+    questions: list[str] = Field(default_factory=list)
     usecase: Usecase
     reason: str
 

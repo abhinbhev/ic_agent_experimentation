@@ -10,13 +10,13 @@ whichever client is configured; the input/output shapes
 
 import json
 import logging
+import uuid
 from abc import ABC, abstractmethod
 
 import requests
 
 from ic_agent.config.settings import Settings, get_settings
 from ic_agent.models.retrieval import RetrievalQuery, RetrievalResult, Usecase
-from ic_agent.utils.ids import new_probe_id
 
 logger = logging.getLogger(__name__)
 
@@ -46,18 +46,19 @@ class HttpRetrievalClient(RetrievalClient):
 
     def query(self, question: str, usecase: Usecase) -> str:
         template_usecase = _USECASE_TEMPLATE_MAP[usecase]
+        request_id = str(uuid.uuid4())
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["X-Internal-API-Key"] = self._api_key
 
         response = requests.post(
             f"{self._base_url}/api/v1/analysis-template-executor/execute",
-            params={"user_id": self._user_id},
+            params={"user_id": self._user_id, "request_id": request_id},
             json={
                 "usecase": template_usecase,
                 "user_question": question,
                 "ner_heads": [],
-                "request_id": new_probe_id(),
+                "request_id": request_id,
             },
             headers=headers,
             timeout=120,
@@ -70,14 +71,34 @@ class HttpRetrievalClient(RetrievalClient):
         if data.get("error"):
             return f"Retrieval error: {data['error']}"
 
+        # Extract summary from the response JSON envelope.
         raw_response = data.get("response", "")
+        summary = None
         try:
             parsed = json.loads(raw_response)
             summary = parsed.get("Summary")
-            if summary:
-                return summary
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
+
+        # Extract sql_result rows from raw_result (the actual numerical data).
+        sql_result = None
+        raw_result = data.get("raw_result") or {}
+        for item in raw_result.get("result") or []:
+            if item.get("sql_result") is not None:
+                sql_result = item["sql_result"]
+                break
+
+        if summary and sql_result:
+            return f"{summary}\n\nData:\n{json.dumps(sql_result, indent=2)}"
+        if summary:
+            return summary
+        if sql_result:
+            return f"Data:\n{json.dumps(sql_result, indent=2)}"
+
+        if not raw_response:
+            if sql_result is not None:
+                return "No data returned (sql_result was empty). The query was parsed but returned no rows — the requested combination of brand/country/period/KPI may not exist in the database."
+            return "No response returned by the retrieval service."
 
         return raw_response
 
