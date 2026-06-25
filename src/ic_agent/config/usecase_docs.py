@@ -27,14 +27,18 @@ from ic_agent.models.retrieval import Usecase
 _USECASE_IDS: tuple[Usecase, ...] = ("brand_guidance", "category")
 
 
-def load_usecase_docs(domain_id: str, base_dir: str = "docs/metadata") -> dict[str, str]:
+def load_usecase_docs(
+    domain_id: str,
+    base_dir: str = "docs/metadata",
+    primary_usecase: str = "brand_guidance",
+) -> dict[str, str]:
     base = Path(base_dir)
     domain_dir = base / domain_id
     docs: dict[str, str] = {}
 
     knowledge_doc = domain_dir / "knowledge_doc.md"
     if knowledge_doc.is_file():
-        docs["brand_guidance"] = knowledge_doc.read_text(encoding="utf-8")
+        docs[primary_usecase] = knowledge_doc.read_text(encoding="utf-8")
 
     for usecase_id in _USECASE_IDS:
         if usecase_id in docs:

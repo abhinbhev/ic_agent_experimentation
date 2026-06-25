@@ -35,6 +35,10 @@ class DomainConfig(BaseModel):
     business_rules: list[str] = Field(default_factory=list)
     terminology: dict[str, str] = Field(default_factory=dict)
 
+    # Which usecase key knowledge_doc.md should be loaded under. Defaults to
+    # "brand_guidance" for backward compatibility with the existing domain.
+    primary_usecase: str = "brand_guidance"
+
     # Optional per-service overrides for the domain_prompt half of a
     # service's prompt bundle, keyed by service name (e.g.
     # "planner_consultant"). If absent, a template is rendered from the

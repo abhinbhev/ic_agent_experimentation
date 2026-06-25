@@ -26,7 +26,7 @@ def test_search_falls_back_to_full_corpus_when_no_dataset_family_match(
 
     assert result.matched_patterns
     top = result.matched_patterns[0]
-    assert top.pattern_id == "brand_country_period_performance"
+    assert top.pattern_id == "brand_country_period_performance_bg"
     assert 0.0 <= top.confidence <= 1.0
     assert top.probe_strategy == [
         "change in equity",
@@ -58,10 +58,12 @@ def test_search_matches_brand_guidance_domain_via_dataset_family(
 
     assert result.matched_patterns
     top = result.matched_patterns[0]
-    assert top.pattern_id == "brand_country_period_performance"
+    assert top.pattern_id == "brand_country_period_performance_bg"
 
 
-def test_search_empty_corpus_returns_no_matches(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend):
+def test_search_empty_corpus_returns_no_matches(
+    tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend
+):
     empty_corpus = tmp_path / "empty.yaml"
     empty_corpus.write_text("[]", encoding="utf-8")
 

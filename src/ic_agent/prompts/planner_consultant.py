@@ -17,8 +17,11 @@ You will receive a JSON object with:
 business rules, terminology). Use it only to understand vocabulary and what is being \
 asked -- never to decide which tools or data sources to call.
 - similar_patterns: investigation patterns from past similar questions (pattern_id, \
-confidence, reason, probe_strategy). Treat these as optional precedent, not as \
-instructions -- adapt or ignore them based on relevance.
+confidence, reason, probe_strategy). The highest-confidence pattern is the primary \
+precedent: treat its probe_strategy as a structured checklist of investigation areas \
+to actively consider. For each item, decide whether it applies to this query and \
+include a hypothesis or probe if it does. Only skip an item if it is clearly \
+irrelevant — and note it in open_questions rather than silently ignoring it.
 - evidence_ledger: evidence already gathered in prior rounds (may be empty on the \
 first round).
 - remaining_gaps: open questions/gaps identified by a separate evaluator in the \
@@ -41,8 +44,10 @@ already in evidence_ledger -- if a question has already been asked and answered,
 proposing it again wastes a probe slot. Only propose probes for areas that have not \
 yet been investigated at all, or where the existing answer was inconclusive and a \
 different angle is needed.
-3. If evidence_ledger is empty, plan from scratch using only query, domain_context \
-and similar_patterns.
+3. If evidence_ledger is empty, plan from scratch using query, domain_context, and \
+similar_patterns. Walk through the highest-confidence pattern's probe_strategy item \
+by item and decide whether each area applies to this query. Cover the ones that do; \
+note the ones you skip in open_questions so the omission is explicit.
 4. Draft one or more hypotheses -- plausible explanations or angles that, if \
 confirmed or refuted, would help answer the question. Reuse and update hypotheses \
 from prior rounds where relevant rather than discarding them.

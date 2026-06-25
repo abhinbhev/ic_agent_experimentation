@@ -276,7 +276,7 @@
       <p>Stage 1 filters the corpus by dataset-family overlap; Stage 2 scores by
         BM25 + embedding cosine; Stage 3 fuses scores.</p>
       <pre>similar_patterns: [
-  { pattern_id: "brand_country_period_performance", confidence: 1.00,
+  { pattern_id: "brand_country_period_performance_bg", confidence: 1.00,
     reason: "Matched on intent 'How is a brand's performance in a country in a given period?'
              (bm25=0.000, embedding=1.000)",
     probe_strategy: "change in equity → factors affecting equity → perceptions of the brand
@@ -711,7 +711,10 @@ const NODES = [
       </ul>
       <h3>Output</h3>
       <ul><li><code>similar_patterns</code>: list of
-        <code>{pattern_id, confidence, reason, probe_strategy}</code></li></ul>` },
+        <code>{pattern_id, confidence, reason, probe_strategy}</code>.
+        The highest-confidence match's <code>probe_strategy</code> is
+        treated by the Planner Consultant as a structured checklist of
+        investigation areas to walk through.</li></ul>` },
 
   { id: "planner_consultant", x: 550, y: 270, w: 190, h: 70, cls: "llm",
     title: "Planner Consultant", sub: "LLM · plans the investigation (domain-agnostic)",
@@ -742,8 +745,13 @@ const NODES = [
       <code>domain_prompt_overrides</code>, and an optional
       <code>prompts/domains/&lt;domain_id&gt;/planner_consultant.md</code>
       guideline file. (This is the only domain context the Planner
-      Consultant sees -- it is not expected to name specific KPIs in its
-      output.)</p>` },
+      Consultant sees — it is not expected to name specific KPIs in its
+      output.)</p>
+      <p><b>Probe strategy checklist:</b> the Planner Consultant is instructed
+      to walk through the highest-confidence pattern's <code>probe_strategy</code>
+      item by item and include a hypothesis or probe for each area that
+      applies — skipping only items that are clearly irrelevant and noting
+      the omission in <code>open_questions</code>.</p>` },
 
   { id: "planner", x: 750, y: 415, w: 170, h: 70, cls: "hybrid",
     title: "Planner", sub: "KPI selection · data-fetch questions · dedup",
@@ -777,14 +785,21 @@ const NODES = [
         requests ("What is/are X for Y in Z?"), not analytical tasks.
         A comparison probe → fetch the data that covers both sides
         (e.g. all brands, both periods) in one call.</li>
-      <li><b>Coverage subsumption:</b> if a broader question already
-        assigned in this batch returns a superset of what a narrower
-        probe needs, skip the narrower question.</li></ul>
+      <li><b>Proactive design:</b> questions are designed to be broad
+        enough upfront to serve multiple probes — e.g. a multi-period
+        fetch that covers a trend probe <i>and</i> a current-period
+        probe in one call.</li>
+      <li><b>Coverage subsumption (<code>keep=false</code>):</b> after
+        all questions are formed, a consolidation pass identifies any
+        question whose data is fully returned by another question in the
+        same batch. Those are marked <code>keep=false</code>; the service
+        drops them deterministically before execution.</li></ul>
       <h3>Output</h3>
       <ul><li><code>assignments[]</code> → <code>{probe_candidate_id,
-        questions[], usecase, reason}</code>. <code>questions</code> is
-        typically one data-fetch question; may be empty if subsumed by
-        an earlier question in the batch.</li>
+        questions[{text, keep}], usecase, reason}</code>. Each
+        <code>questions</code> entry carries a boolean <code>keep</code>
+        flag; entries with <code>keep=false</code> are dropped before
+        execution.</li>
       <li>Flattened to <code>tool_calls[]</code>, deduplicated against
         <code>asked_questions</code>, sorted by <code>expected_value</code>
         and capped at <code>max_probes_per_round</code>.</li></ul>` },
@@ -849,6 +864,8 @@ const NODES = [
       <li>Checks stop conditions in order: <code>max_rounds_reached</code> →
         <code>max_total_probes_reached</code> →
         <code>all_major_gaps_closed</code> →
+        <code>no_progress_this_round</code> (Planner produced zero questions,
+        or every probe this round was irrelevant) →
         <code>incremental_value_below_threshold</code> → else
         <code>continue</code>.</li></ul>
       <h3>Domain-grounded LLM call</h3>
@@ -872,7 +889,11 @@ const NODES = [
       markdown report.</p>
       <h3>Input</h3>
       <ul><li><code>query</code>, full <code>ledger</code>,
-        <code>decision_consultant_output</code>, <code>stop_reason</code></li></ul>
+        <code>decision_consultant_output</code>, <code>stop_reason</code></li>
+      <li><code>usecase_docs</code> — knowledge docs for each usecase
+        (same as Planner, so the Synthesizer can correctly interpret
+        KPI names and what each usecase can/can't answer)</li>
+      <li><code>schema_doc</code> — column-level metadata for the domain</li></ul>
       <h3>Output</h3>
       <ul><li><code>markdown</code> with exactly 6 sections: Summary, Key
         Findings, Evidence, Recommendations, Confidence, Remaining

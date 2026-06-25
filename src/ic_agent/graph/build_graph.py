@@ -51,7 +51,9 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
         embedding_backend=get_embedding_backend(settings),
     )
     planner_consultant_service = PlannerConsultantService(get_chat_model(settings))
-    usecase_docs = load_usecase_docs(domain_config.domain_id, settings.usecase_docs_dir)
+    usecase_docs = load_usecase_docs(
+        domain_config.domain_id, settings.usecase_docs_dir, domain_config.primary_usecase
+    )
     schema_doc = load_schema_doc(domain_config.domain_id, settings.usecase_docs_dir)
     question_format_doc = load_question_format_doc(
         domain_config.domain_id, settings.usecase_docs_dir
