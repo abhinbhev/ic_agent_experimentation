@@ -80,9 +80,9 @@ git add .secrets.baseline
 
 ## Adding a new domain
 
-1. Create `config/domains/<domain_id>.yaml` with `DomainConfig` fields (see `config/domains/gai_copilot_marketing_brand_guidance_ghq.yaml` as reference).
+1. Create `config/domains/<domain_id>.yaml` with `DomainConfig` fields (see `config/domains/gai_copilot_marketing_brand_guidance_ghq.yaml` or `gai_copilot_marketing_category_ghq.yaml` as reference). Set `primary_usecase` to the retrieval usecase ID that `knowledge_doc.md` covers (defaults to `brand_guidance` if omitted).
 2. Create `docs/metadata/<domain_id>/` and add:
-   - `knowledge_doc.md` — what the usecase covers and doesn't
+   - `knowledge_doc.md` — what the primary usecase covers and doesn't. Loaded under the key set by `primary_usecase` in the domain YAML.
    - `question_format.md` — retrieval service NLP extraction guide; valid KPI names, parameter rules, worked examples. **This is the Planner's KPI oracle — it must be accurate.**
    - `COLUMN_DESCRIPTION.csv` — columns with `table_name`, `column_name`, `column_description`
 3. Add an entry to `corpus/similar_plans.yaml` with a matching `dataset_family`.

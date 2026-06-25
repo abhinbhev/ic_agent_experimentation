@@ -126,6 +126,7 @@ incremental_value_weights:
 ```yaml
 domain_id: my_domain
 display_name: "My Domain"
+primary_usecase: my_usecase   # key knowledge_doc.md is loaded under (default: brand_guidance)
 datasets:
   - name: Brand Guidance
     description: "Survey-based brand health data."
@@ -159,7 +160,7 @@ See `.env.example` for the full list.
 1. **Domain config:** Create `config/domains/<domain_id>.yaml`.
 
 2. **Metadata files:** Create `docs/metadata/<domain_id>/` and add:
-   - `knowledge_doc.md` — what the `brand_guidance` usecase covers (and doesn't)
+   - `knowledge_doc.md` — what the primary usecase covers (and doesn't). Loaded under the key set by `primary_usecase` in the domain YAML (defaults to `brand_guidance`).
    - `question_format.md` — the retrieval service's NLP extraction guide: valid KPI names, parameter rules, worked examples. This is the Planner's KPI oracle.
    - `COLUMN_DESCRIPTION.csv` — columns with `table_name`, `column_name`, `column_description`
 

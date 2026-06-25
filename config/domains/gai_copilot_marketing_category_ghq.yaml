@@ -1,0 +1,14 @@
+domain_id: gai_copilot_marketing_category_ghq
+display_name: "GAI Copilot Marketing - Category (GHQ)"
+primary_usecase: category
+
+datasets:
+  - name: Category
+    description: "Consumer survey-based consumption data (Participation, Occasions, Servings) by brand, category, country and time period."
+
+metrics: []
+dimensions: []
+business_rules: []
+terminology: {}
+
+domain_prompt_overrides: {}

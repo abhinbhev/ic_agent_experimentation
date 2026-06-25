@@ -16,7 +16,9 @@ An **agentic analytics framework** built on LangGraph. Given a business question
 6. Decides deterministically whether another round is worth running.
 7. Loops or stops; on stop, synthesises a business-facing markdown report.
 
-The only live domain in production use is `gai_copilot_marketing_brand_guidance_ghq` — brand health / perception data from the `analysis_template_svc` retrieval API.
+Two live domains:
+- `gai_copilot_marketing_brand_guidance_ghq` — brand health / perception data (`brand_guidance` usecase)
+- `gai_copilot_marketing_category_ghq` — consumer consumption data / POS program (`category` usecase)
 
 ---
 
@@ -32,7 +34,8 @@ ic_agent_experimentation/
 ├── config/
 │   ├── probe_budget.yaml              # budget limits, score-fusion weights, IVF weights
 │   └── domains/
-│       ├── gai_copilot_marketing_brand_guidance_ghq.yaml   # LIVE domain (deliberately minimal)
+│       ├── gai_copilot_marketing_brand_guidance_ghq.yaml   # LIVE domain — brand health
+│       ├── gai_copilot_marketing_category_ghq.yaml         # LIVE domain — category/POS consumption
 │       └── example.yaml               # toy domain for testing
 │
 ├── corpus/
@@ -45,11 +48,15 @@ ic_agent_experimentation/
 │   ├── brand highlights refined.pdf   # real run output PDF (used to populate the worked example)
 │   ├── brand_highlights_extracted.md  # OCR text of the above PDF
 │   └── metadata/
-│       └── gai_copilot_marketing_brand_guidance_ghq/
-│           ├── knowledge_doc.md       # brand_guidance usecase knowledge doc (fed to Planner)
-│           ├── question_format.md     # retrieval NLP extraction guide (fed to Planner — critical)
-│           ├── COLUMN_DESCRIPTION.csv # column-level schema fed to Planner
-│           └── TABLE_DESCRIPTION.csv  # NOT used (user decision: columns are sufficient)
+│       ├── gai_copilot_marketing_brand_guidance_ghq/
+│       │   ├── knowledge_doc.md       # brand_guidance usecase knowledge doc (fed to Planner + Synthesizer)
+│       │   ├── question_format.md     # retrieval NLP extraction guide (fed to Planner — critical)
+│       │   ├── COLUMN_DESCRIPTION.csv # column-level schema fed to Planner + Synthesizer
+│       │   └── TABLE_DESCRIPTION.csv  # NOT used (user decision: columns are sufficient)
+│       └── gai_copilot_marketing_category_ghq/
+│           ├── knowledge_doc.md       # category usecase knowledge doc
+│           ├── question_format.md     # category NLP extraction guide
+│           └── COLUMN_DESCRIPTION.csv # placeholder (to be filled in)
 │
 ├── src/ic_agent/
 │   ├── main.py                        # CLI entry point
@@ -126,7 +133,7 @@ ic_agent_experimentation/
 
 **Corpus schema** (`corpus/similar_plans.yaml`):
 ```yaml
-- pattern_id: brand_country_period_performance
+- pattern_id: brand_country_period_performance_bg   # _bg suffix = Brand Guidance domain
   intent: "How is a brand's performance in a country in a given period?"
   dataset_family: [Brand Guidance]
   analysis_type: brand_health
@@ -140,6 +147,8 @@ ic_agent_experimentation/
   stop_condition: "..."
   failure_modes: [...]
 ```
+
+The `probe_sequence` list from the top-matching corpus entry is passed to the Planner Consultant as `probe_strategy`. The Planner Consultant is instructed to treat it as a **structured checklist**: walk through each item, include a hypothesis or probe for areas that apply, and note skipped items in `open_questions` rather than silently ignoring them.
 
 **Important:** When running tests, always pass `cache_dir=tmp_path` to `SimilarPlanService` to avoid stale cache dimension mismatches between real (1536-dim) and stub (8-dim) embeddings.
 
@@ -188,11 +197,13 @@ PlannerConsultantOutput(
 - "Compare Brahma vs competitors" → "What is the power of **all brands** in Brazil in Q1 2026?"
 - "How did it change vs prior period?" → "What is [KPI] for Brahma in Brazil in **Q1 2026 and Q4 2025**?" (one multi-period fetch, not two separate calls)
 
-**Coverage subsumption:** Before generating a question for probe N, check whether any question already assigned to an earlier probe in this batch already returns a superset of what probe N needs. If so, set `questions=[]` for probe N and note the subsumption in `reason`.
+**Proactive design:** Before running the consolidation pass, the Planner is instructed to design questions to be broad enough upfront to serve multiple probes — e.g. a multi-period fetch that covers a trend probe *and* a current-period probe in one call.
+
+**Coverage subsumption (`keep=false` mechanic):** After all questions are generated across all probes in the batch, a consolidation pass identifies questions whose data is fully returned by another question in the same batch. Those are marked `keep=false`; `planner_service.py` drops them deterministically before execution. Period subsumption rule: a question asking for period T is subsumed by any question in the batch that asks for the same KPIs, the same entity scope, and a period set that includes T.
 
 **Multi-KPI grouping:** The retrieval service can handle multiple KPIs in one call. Group related KPIs (e.g. `meaningful, difference, salience`) into one question. Only split into multiple questions when KPIs belong to genuinely distinct retrieval types (e.g. factual KPIs vs `bip_market` imagery) or different dimension cuts (e.g. overall vs demographic breakdown).
 
-**Deduplication (two-layer):**
+**Deduplication (two-layer, cross-round):**
 1. **LLM-level:** `asked_questions` (all questions from prior rounds' evidence ledger) are passed in the JSON payload with explicit instruction not to regenerate them.
 2. **Deterministic backstop:** `planner_service.py` skips any generated question whose lowercased form is in `asked_questions`. This is the safety net — the LLM constraint should catch most, but this catches any slippage.
 
@@ -200,12 +211,12 @@ PlannerConsultantOutput(
 ```python
 ProbeUsecaseAssignment(
     probe_candidate_id="P1",
-    questions=["What is the power of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?"],
+    questions=[QuestionItem(text="What is the power of Brahma in Brazil in Q1 2026, Q4 2025, and Q1 2025?", keep=True)],
     usecase="brand_guidance",
     reason="power captures overall equity; 3-period fetch covers current, prior-quarter, and prior-year."
 )
 ```
-`questions` is a list (can be empty if subsumed). Each item becomes one `ToolCall`.
+`questions` is a list of `QuestionItem(text, keep)`. Items with `keep=False` are dropped by the service before execution; the list can be empty if a probe is fully subsumed. Each surviving item becomes one `ToolCall`.
 
 **Tool call ordering and capping:** Tool calls are sorted high → medium → low `expected_value` then capped at `max_probes_per_round` (currently 5).
 
@@ -269,8 +280,9 @@ If `response` is empty but `sql_result` exists and is an empty list, a descripti
 1. `max_rounds_reached` — `rounds_completed >= max_rounds`
 2. `max_total_probes_reached` — `total_probes_completed >= max_total_probes`
 3. `all_major_gaps_closed` — no `open/partial/conflicting` gaps remain
-4. `incremental_value_below_threshold` — weighted IVF score < `stop_threshold`
-5. else: `continue`
+4. `no_progress_this_round` — stall detected: Planner produced zero questions, or every probe executed this round was marked irrelevant by the Decision Consultant
+5. `incremental_value_below_threshold` — weighted IVF score < `stop_threshold`
+6. else: `continue`
 
 **Incremental Value Framework (IVF) scoring:**
 ```
@@ -289,6 +301,8 @@ All weights and the threshold live in `config/probe_budget.yaml` and are runtime
 ### Node 7 — Synthesizer (LLM)
 
 **Purpose:** Produces a clean, business-facing markdown report from the full ledger.
+
+**Domain context:** The Synthesizer receives the same `usecase_docs` (knowledge docs per usecase) and `schema_doc` (column-level schema) as the Planner, so it can correctly interpret KPI names and scales when reading the evidence ledger.
 
 **Writing constraints (enforced by prompt):**
 - Never mention probe IDs, probe counts, investigation rounds, system internals, or any metadata about how the answer was produced.
@@ -314,7 +328,9 @@ DOMAIN GUIDELINES
 
 The `DOMAIN GUIDELINES` section is appended under that explicit heading so the model can cleanly separate its behavior spec from the dynamic domain context.
 
-**Planner is unique:** In addition to `DOMAIN GUIDELINES`, the Planner receives `usecase_docs`, `question_format`, `schema`, and `asked_questions` in the **human message** JSON payload — these are per-request, not per-domain prompt content.
+**Planner is unique:** In addition to `DOMAIN GUIDELINES`, the Planner receives `usecase_docs`, `question_format`, `schema_doc`, and `asked_questions` in the **human message** JSON payload — these are per-request, not per-domain prompt content.
+
+**Synthesizer also receives domain context:** Unlike other LLM nodes, the Synthesizer receives `usecase_docs` and `schema_doc` in its human message payload (same content as the Planner) so it can correctly interpret KPI names and scales when writing the report.
 
 ---
 
@@ -324,15 +340,16 @@ All per-domain metadata lives under `docs/metadata/<domain_id>/`:
 
 | File | Purpose | Fed to |
 |------|---------|--------|
-| `knowledge_doc.md` | What the `brand_guidance` usecase can/can't answer | Planner (as `usecase_docs["brand_guidance"]`) |
+| `knowledge_doc.md` | What the primary usecase can/can't answer. Loaded under the key set by `primary_usecase` in the domain YAML (default: `"brand_guidance"`). | Planner + Synthesizer (as `usecase_docs[primary_usecase]`) |
 | `question_format.md` | Retrieval service NLP extraction guide: valid KPI names, parameter rules, examples | Planner (as `question_format`) |
-| `COLUMN_DESCRIPTION.csv` | Column-level schema (`table_name`, `column_name`, `column_description`) | Planner (as `schema`) |
+| `COLUMN_DESCRIPTION.csv` | Column-level schema (`table_name`, `column_name`, `column_description`) | Planner + Synthesizer (as `schema_doc`) |
 | `TABLE_DESCRIPTION.csv` | Table descriptions — **NOT used** (user decision: column descriptions are sufficient) | — |
 
 **To add a new domain:**
-1. Create `config/domains/<domain_id>.yaml` with `DomainConfig` fields.
+1. Create `config/domains/<domain_id>.yaml` with `DomainConfig` fields. Set `primary_usecase` to the retrieval usecase ID the `knowledge_doc.md` covers (e.g. `category`). Defaults to `brand_guidance` if omitted.
 2. Create `docs/metadata/<domain_id>/` and populate the above files.
-3. The domain appears automatically in the UI dropdown and CLI `--domain` arg.
+3. Add an entry to `corpus/similar_plans.yaml` with a matching `dataset_family`.
+4. The domain appears automatically in the UI dropdown and CLI `--domain` arg.
 
 ---
 
@@ -443,7 +460,7 @@ uv run streamlit run ui/app.py
 1. Add the usecase ID to `Usecase` literal in `models/retrieval.py`.
 2. Add the template name mapping to `_USECASE_TEMPLATE_MAP` in `retrieval_service.py`.
 3. Add the usecase ID to `_USECASE_IDS` tuple in `config/usecase_docs.py`.
-4. Create `docs/metadata/<domain_id>/<usecase_id>.md` with the knowledge doc.
+4. Create `docs/metadata/<domain_id>/knowledge_doc.md` with the knowledge doc. Set `primary_usecase: <usecase_id>` in the domain YAML so it loads under the right key.
 
 ---
 
