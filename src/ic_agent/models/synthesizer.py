@@ -16,6 +16,8 @@ class SynthesizerInput(BaseModel):
     ledger: list[EvidenceLedgerEntry] = Field(default_factory=list)
     decision_consultant_output: DecisionConsultantOutput | None = None
     stop_reason: str
+    usecase_docs: dict[str, str] = Field(default_factory=dict)
+    schema_doc: str | None = None
 
 
 class SynthesizerOutput(BaseModel):

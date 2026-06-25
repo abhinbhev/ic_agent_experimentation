@@ -9,7 +9,11 @@ from tests.conftest import FakeStructuredChatModel
 
 
 def _service(sample_domain_config, sample_incremental_value_weights, recommendation=None):
-    outputs = {GapRecommendation: [recommendation or GapRecommendation(recommended_next_gap=None, reason="r")]}
+    outputs = {
+        GapRecommendation: [
+            recommendation or GapRecommendation(recommended_next_gap=None, reason="r")
+        ]
+    }
     return DecisionEngineService(
         sample_domain_config,
         chat_model=FakeStructuredChatModel(outputs),
@@ -17,7 +21,9 @@ def _service(sample_domain_config, sample_incremental_value_weights, recommendat
     )
 
 
-def test_weighted_score_and_continue(sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights):
+def test_weighted_score_and_continue(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
     consultant_output = DecisionConsultantOutput(
         relevant_probes=[e.probe_id for e in sample_evidence_ledger],  # 2 relevant
         irrelevant_probes=[],
@@ -31,7 +37,9 @@ def test_weighted_score_and_continue(sample_domain_config, sample_evidence_ledge
     service = _service(
         sample_domain_config,
         sample_incremental_value_weights,
-        recommendation=GapRecommendation(recommended_next_gap="pricing contribution", reason="explains most of the gap"),
+        recommendation=GapRecommendation(
+            recommended_next_gap="pricing contribution", reason="explains most of the gap"
+        ),
     )
 
     output = service.run(
@@ -49,7 +57,9 @@ def test_weighted_score_and_continue(sample_domain_config, sample_evidence_ledge
     assert b.evidence_coverage == pytest.approx(2 / 5)
     assert b.confidence == pytest.approx(0.7)
     assert b.remaining_gaps_score == pytest.approx(0.5)  # 1 open out of 2
-    assert b.alternative_hypotheses_score == pytest.approx(1 / 3)  # 1 new hypothesis / assumed max 3
+    assert b.alternative_hypotheses_score == pytest.approx(
+        1 / 3
+    )  # 1 new hypothesis / assumed max 3
     assert b.probe_cost_score == pytest.approx(1 - 5 / 20)
 
     expected_total = (
@@ -67,7 +77,9 @@ def test_weighted_score_and_continue(sample_domain_config, sample_evidence_ledge
     assert output.recommended_next_gap == "pricing contribution"
 
 
-def test_stop_max_rounds_reached(sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights):
+def test_stop_max_rounds_reached(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
     consultant_output = DecisionConsultantOutput(
         relevant_probes=[e.probe_id for e in sample_evidence_ledger],
         irrelevant_probes=[],
@@ -93,7 +105,9 @@ def test_stop_max_rounds_reached(sample_domain_config, sample_evidence_ledger, s
     assert output.recommended_next_gap is None
 
 
-def test_stop_max_total_probes_reached(sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights):
+def test_stop_max_total_probes_reached(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
     consultant_output = DecisionConsultantOutput(
         relevant_probes=[e.probe_id for e in sample_evidence_ledger],
         irrelevant_probes=[],
@@ -118,7 +132,9 @@ def test_stop_max_total_probes_reached(sample_domain_config, sample_evidence_led
     assert output.stop_reason == "max_total_probes_reached"
 
 
-def test_stop_all_major_gaps_closed(sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights):
+def test_stop_all_major_gaps_closed(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
     consultant_output = DecisionConsultantOutput(
         relevant_probes=[e.probe_id for e in sample_evidence_ledger],
         irrelevant_probes=[],
@@ -143,7 +159,9 @@ def test_stop_all_major_gaps_closed(sample_domain_config, sample_evidence_ledger
     assert output.stop_reason == "all_major_gaps_closed"
 
 
-def test_stop_incremental_value_below_threshold(sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights):
+def test_stop_incremental_value_below_threshold(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
     consultant_output = DecisionConsultantOutput(
         relevant_probes=[],
         irrelevant_probes=[e.probe_id for e in sample_evidence_ledger],
@@ -167,3 +185,64 @@ def test_stop_incremental_value_below_threshold(sample_domain_config, sample_evi
     assert output.expected_incremental_value < sample_incremental_value_weights.stop_threshold
     assert output.continue_ is False
     assert output.stop_reason == "incremental_value_below_threshold"
+
+
+def test_stop_no_progress_this_round(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
+    """All probes in the current round are irrelevant — stall detected, stop early."""
+    # Both fixture ledger entries are round_index=0; rounds_completed=0 → current round
+    all_ids = [e.probe_id for e in sample_evidence_ledger]
+    consultant_output = DecisionConsultantOutput(
+        relevant_probes=[],
+        irrelevant_probes=all_ids,
+        remaining_gaps=[RemainingGap(description="unknown term mapping", category="open")],
+        new_hypotheses=[],
+        confidence=0.3,
+    )
+    service = _service(sample_domain_config, sample_incremental_value_weights)
+
+    output = service.run(
+        DecisionEngineInput(
+            ledger=sample_evidence_ledger,
+            decision_consultant_output=consultant_output,
+            rounds_completed=0,
+            probes_completed_this_round=2,
+            total_probes_completed=2,
+            probe_budget=ProbeBudgetConfig(),
+        )
+    )
+
+    assert output.continue_ is False
+    assert output.stop_reason == "no_progress_this_round"
+    assert output.recommended_next_gap is None
+    assert "progress" in output.reason.lower()
+
+
+def test_stop_no_progress_zero_probes(
+    sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
+):
+    """Planner produced zero probes this round — stall detected even without irrelevant probe check."""
+    consultant_output = DecisionConsultantOutput(
+        relevant_probes=[e.probe_id for e in sample_evidence_ledger],
+        irrelevant_probes=[],
+        remaining_gaps=[RemainingGap(description="still open gap", category="open")],
+        new_hypotheses=[],
+        confidence=0.5,
+    )
+    service = _service(sample_domain_config, sample_incremental_value_weights)
+
+    output = service.run(
+        DecisionEngineInput(
+            ledger=sample_evidence_ledger,
+            decision_consultant_output=consultant_output,
+            rounds_completed=1,
+            probes_completed_this_round=0,
+            total_probes_completed=2,
+            probe_budget=ProbeBudgetConfig(),
+        )
+    )
+
+    assert output.continue_ is False
+    assert output.stop_reason == "no_progress_this_round"
+    assert output.recommended_next_gap is None

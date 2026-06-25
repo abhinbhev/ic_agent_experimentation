@@ -34,7 +34,9 @@ domain_ids = sorted(p.stem for p in Path(settings.domain_config_dir).glob("*.yam
 
 with st.sidebar:
     domain_id = st.selectbox("Domain", domain_ids, index=0)
-    query = st.text_area("Business question", "Why did revenue decline in East China during Q1?", height=120)
+    query = st.text_area(
+        "Business question", "Why did revenue decline in East China during Q1?", height=120
+    )
     run = st.button("Run", type="primary", use_container_width=True)
 
 
@@ -88,9 +90,12 @@ def render_step(node_name: str, update: dict) -> None:
                     st.caption(f"↳ {tc.reason}")
 
     elif node_name == "execution":
+        count = update.get("probes_completed_this_round", 0)
+        if count == 0:
+            return
         ledger = update.get("evidence_ledger", [])
-        new_entries = ledger[-update.get("probes_completed_this_round", 0) :]
-        with st.expander(f"📡 Retrieval — {len(new_entries)} probe(s) executed", expanded=True):
+        new_entries = ledger[-count:]
+        with st.expander(f"📡 Retrieval — {count} probe(s) executed", expanded=True):
             for e in new_entries:
                 st.markdown(f"**Q:** {e.question}")
                 _render_result(e.result)

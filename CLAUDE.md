@@ -432,6 +432,8 @@ uv run streamlit run ui/app.py
 
 **Planner generating analytical questions.** The retrieval service is a data fetcher, not an analyst. If questions like "Compare X vs Y" or "Which brand performed best?" slip through, the API will still return data but the NLP extraction may not match the intent. The SCOPE BOUNDARIES section says: "Always phrase questions as data-fetch requests, not as analytical or comparative tasks."
 
+**Planner generating context-dependent questions.** The retrieval service receives each question in complete isolation — it has no memory of prior questions and no shared context. Questions like "What is the power of the same brand in the prior period?" or "same as above but for awareness" will fail to extract parameters correctly. Every question must be fully self-contained: brand, country, period, and all other dimension values must be spelled out explicitly in the question text itself. The SELF-CONTAINED QUESTIONS principle and a corresponding SELF-CHECK in the Planner prompt enforce this.
+
 **Duplicate probes in subsequent rounds.** Fixed by two-layer deduplication: LLM sees `asked_questions` in payload; service deterministically skips any question already in the set. If you see duplicates, check that `evidence_ledger` is being passed through state correctly in `nodes.py:make_planner_node`.
 
 ---

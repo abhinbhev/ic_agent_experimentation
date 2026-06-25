@@ -53,7 +53,7 @@ START → Similar Plan → Planner Consultant → Planner → Execution
 | **Execution** | Pure logic | Calls the retrieval API for each question; stores narrative summary + raw SQL rows in the evidence ledger |
 | **Decision Consultant** | LLM · domain-agnostic | Evaluates the full evidence ledger; categorises remaining gaps (`closed/partial/open/conflicting`); estimates confidence |
 | **Decision Engine** | Deterministic + small LLM | Computes Incremental Value Framework score; checks stop conditions in order; picks the recommended next gap if continuing |
-| **Synthesizer** | LLM | Reads the full ledger and writes a clean, business-facing markdown report — no system metadata, every number traced to the data |
+| **Synthesizer** | LLM | Reads the full ledger and writes a clean, business-facing markdown report — no system metadata, every number traced to the data. Receives the same domain context as the Planner (`usecase_docs`, `schema_doc`) so it can correctly interpret KPI names and scales. |
 
 ### Separation of concerns
 
@@ -71,7 +71,7 @@ The Planner enforces two key constraints when forming retrieval questions:
 - ✅ `"What is the power of all brands in Brazil in Q1 2026?"`
 - ❌ `"Compare Brahma vs competitors on brand power"`
 
-**Coverage subsumption** — a multi-period or all-entity fetch subsumes a narrower single-period or single-entity fetch. If a broader question already assigned to an earlier probe in the same batch would return the data a later probe needs, the later probe generates no question.
+**Coverage subsumption** — before writing each new question the Planner checks what earlier probes in the same batch already cover. If an earlier question returns the needed data, the new probe reuses that coverage instead of generating a duplicate. Where possible, one question is designed to be broad enough to serve multiple probes (e.g. a multi-period fetch for Q4 2025 + Q1 2026 covers both a trend probe and a current-period probe). After all questions are formed, a consolidation pass marks any remaining duplicates with `keep=false`; the service drops these before execution.
 
 ### Evidence format
 
@@ -91,8 +91,9 @@ The Decision Engine checks these in order (first match wins):
 1. `max_rounds_reached`
 2. `max_total_probes_reached`
 3. `all_major_gaps_closed`
-4. `incremental_value_below_threshold`
-5. `continue`
+4. `no_progress_this_round` — stall detected: the Planner produced zero questions, or every probe executed this round was marked irrelevant by the Decision Consultant
+5. `incremental_value_below_threshold`
+6. `continue`
 
 ---
 

@@ -41,9 +41,14 @@ class PlannerOutput(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
+class QuestionItem(BaseModel):
+    text: str
+    keep: bool = True
+
+
 class ProbeUsecaseAssignment(BaseModel):
     probe_candidate_id: str
-    questions: list[str] = Field(default_factory=list)
+    questions: list[QuestionItem] = Field(default_factory=list)
     usecase: Usecase
     reason: str
 
