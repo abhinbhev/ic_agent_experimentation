@@ -13,7 +13,7 @@ from ic_agent.graph.nodes import (
 )
 from ic_agent.models.decision_consultant import DecisionConsultantOutput, RemainingGap
 from ic_agent.models.decision_engine import GapRecommendation
-from ic_agent.models.planner import PlannerUsecaseAssignments, ProbeUsecaseAssignment
+from ic_agent.models.planner import PlannerUsecaseAssignments, ProbeUsecaseAssignment, QuestionItem
 from ic_agent.models.planner_consultant import Hypothesis, PlannerConsultantOutput, ProbeCandidate
 from ic_agent.models.state import AgentState
 from ic_agent.models.synthesizer import SynthesizerOutput
@@ -47,13 +47,29 @@ Moderate confidence based on the available evidence.
 """
 
 
-def _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend, probe_budget):
+def _build_test_app(
+    tmp_path,
+    sample_domain_config,
+    sample_score_fusion_weights,
+    stub_embedding_backend,
+    probe_budget,
+):
     consultant_plan = PlannerConsultantOutput(
         objective="Investigate the East China revenue decline",
         hypotheses=[Hypothesis(id="H1", description="Pricing pressure reduced revenue")],
         probe_candidates=[
-            ProbeCandidate(id="PC1", goal="Check revenue trend in East China", expected_value="high", reason="r"),
-            ProbeCandidate(id="PC2", goal="Check volume trend in East China", expected_value="medium", reason="r"),
+            ProbeCandidate(
+                id="PC1",
+                goal="Check revenue trend in East China",
+                expected_value="high",
+                reason="r",
+            ),
+            ProbeCandidate(
+                id="PC2",
+                goal="Check volume trend in East China",
+                expected_value="medium",
+                reason="r",
+            ),
         ],
         success_criteria="Top driver of the decline is identified",
         open_questions=[],
@@ -81,8 +97,18 @@ def _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights,
     )
     usecase_assignments = PlannerUsecaseAssignments(
         assignments=[
-            ProbeUsecaseAssignment(probe_candidate_id="PC1", questions=["q1"], usecase="brand_guidance", reason="r"),
-            ProbeUsecaseAssignment(probe_candidate_id="PC2", questions=["q2"], usecase="category", reason="r"),
+            ProbeUsecaseAssignment(
+                probe_candidate_id="PC1",
+                questions=[QuestionItem(text="q1")],
+                usecase="brand_guidance",
+                reason="r",
+            ),
+            ProbeUsecaseAssignment(
+                probe_candidate_id="PC2",
+                questions=[QuestionItem(text="q2")],
+                usecase="category",
+                reason="r",
+            ),
         ]
     )
     planner_service = PlannerService(
@@ -110,8 +136,12 @@ def _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights,
     graph.add_node("planner_consultant", make_planner_consultant_node(planner_consultant_service))
     graph.add_node("planner", make_planner_node(planner_service))
     graph.add_node("execution", make_execution_node(retrieval_service))
-    graph.add_node("decision_consultant", make_decision_consultant_node(decision_consultant_service))
-    graph.add_node("decision_engine", make_decision_engine_node(decision_engine_service, probe_budget))
+    graph.add_node(
+        "decision_consultant", make_decision_consultant_node(decision_consultant_service)
+    )
+    graph.add_node(
+        "decision_engine", make_decision_engine_node(decision_engine_service, probe_budget)
+    )
     graph.add_node("synthesis", make_synthesis_node(synthesizer_service))
 
     graph.add_edge(START, "similar_plan")
@@ -130,9 +160,17 @@ def _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights,
     return graph.compile()
 
 
-def test_graph_terminates_with_synthesis(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend):
+def test_graph_terminates_with_synthesis(
+    tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend
+):
     probe_budget = ProbeBudgetConfig(max_rounds=2, max_probes_per_round=2, max_total_probes=4)
-    app = _build_test_app(tmp_path, sample_domain_config, sample_score_fusion_weights, stub_embedding_backend, probe_budget)
+    app = _build_test_app(
+        tmp_path,
+        sample_domain_config,
+        sample_score_fusion_weights,
+        stub_embedding_backend,
+        probe_budget,
+    )
 
     initial_state: AgentState = {
         "query": "Why did revenue decline in East China during Q1?",
@@ -162,4 +200,6 @@ def test_graph_terminates_with_synthesis(tmp_path, sample_domain_config, sample_
     ):
         assert header in final_answer.markdown
 
-    assert all(entry.result.startswith("Mock answer to: ") for entry in final_state["evidence_ledger"])
+    assert all(
+        entry.result.startswith("Mock answer to: ") for entry in final_state["evidence_ledger"]
+    )

@@ -18,6 +18,7 @@ StopReason = Literal[
     "max_rounds_reached",
     "max_total_probes_reached",
     "all_major_gaps_closed",
+    "no_progress_this_round",
     "continue",
 ]
 

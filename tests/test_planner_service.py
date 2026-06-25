@@ -3,6 +3,7 @@ from ic_agent.models.planner import (
     PlannerInput,
     PlannerUsecaseAssignments,
     ProbeUsecaseAssignment,
+    QuestionItem,
 )
 from ic_agent.models.planner_consultant import Hypothesis, PlannerConsultantOutput, ProbeCandidate
 from ic_agent.services.planner_service import PlannerService
@@ -25,7 +26,9 @@ def _planner_service(sample_domain_config, probe_budget, assignments):
     chat_model = FakeStructuredChatModel(
         {PlannerUsecaseAssignments: [PlannerUsecaseAssignments(assignments=assignments)]}
     )
-    return PlannerService(sample_domain_config, _USECASE_DOCS, chat_model=chat_model, probe_budget=probe_budget)
+    return PlannerService(
+        sample_domain_config, _USECASE_DOCS, chat_model=chat_model, probe_budget=probe_budget
+    )
 
 
 def test_tool_calls_capped_and_ordered_by_expected_value(sample_domain_config):
@@ -38,8 +41,18 @@ def test_tool_calls_capped_and_ordered_by_expected_value(sample_domain_config):
         sample_domain_config,
         ProbeBudgetConfig(max_probes_per_round=2),
         assignments=[
-            ProbeUsecaseAssignment(probe_candidate_id="P2", questions=["rewritten high value"], usecase="brand_guidance", reason="r"),
-            ProbeUsecaseAssignment(probe_candidate_id="P3", questions=["rewritten medium value"], usecase="category", reason="r"),
+            ProbeUsecaseAssignment(
+                probe_candidate_id="P2",
+                questions=[QuestionItem(text="rewritten high value")],
+                usecase="brand_guidance",
+                reason="r",
+            ),
+            ProbeUsecaseAssignment(
+                probe_candidate_id="P3",
+                questions=[QuestionItem(text="rewritten medium value")],
+                usecase="category",
+                reason="r",
+            ),
         ],
     )
 
@@ -62,8 +75,18 @@ def test_tool_call_ids_are_unique(sample_domain_config):
         sample_domain_config,
         ProbeBudgetConfig(max_probes_per_round=6),
         assignments=[
-            ProbeUsecaseAssignment(probe_candidate_id="P1", questions=["q1"], usecase="brand_guidance", reason="r"),
-            ProbeUsecaseAssignment(probe_candidate_id="P2", questions=["q2"], usecase="brand_guidance", reason="r"),
+            ProbeUsecaseAssignment(
+                probe_candidate_id="P1",
+                questions=[QuestionItem(text="q1")],
+                usecase="brand_guidance",
+                reason="r",
+            ),
+            ProbeUsecaseAssignment(
+                probe_candidate_id="P2",
+                questions=[QuestionItem(text="q2")],
+                usecase="brand_guidance",
+                reason="r",
+            ),
         ],
     )
 
@@ -98,7 +121,10 @@ def test_one_assignment_can_expand_to_multiple_tool_calls(sample_domain_config):
         assignments=[
             ProbeUsecaseAssignment(
                 probe_candidate_id="P1",
-                questions=["What is the Power of Brand X in Country Y?", "What is the Salience of Brand X in Country Y?"],
+                questions=[
+                    QuestionItem(text="What is the Power of Brand X in Country Y?"),
+                    QuestionItem(text="What is the Salience of Brand X in Country Y?"),
+                ],
                 usecase="brand_guidance",
                 reason="split by KPI",
             ),
@@ -111,7 +137,10 @@ def test_one_assignment_can_expand_to_multiple_tool_calls(sample_domain_config):
     assert {tc.related_probe_candidate_id for tc in output.tool_calls} == {"P1"}
     assert len({tc.probe_id for tc in output.tool_calls}) == 2
     questions = {tc.question for tc in output.tool_calls}
-    assert questions == {"What is the Power of Brand X in Country Y?", "What is the Salience of Brand X in Country Y?"}
+    assert questions == {
+        "What is the Power of Brand X in Country Y?",
+        "What is the Salience of Brand X in Country Y?",
+    }
 
 
 def test_expanded_tool_calls_are_capped_at_max_probes_per_round(sample_domain_config):
@@ -124,7 +153,11 @@ def test_expanded_tool_calls_are_capped_at_max_probes_per_round(sample_domain_co
         assignments=[
             ProbeUsecaseAssignment(
                 probe_candidate_id="P1",
-                questions=["question 1", "question 2", "question 3"],
+                questions=[
+                    QuestionItem(text="question 1"),
+                    QuestionItem(text="question 2"),
+                    QuestionItem(text="question 3"),
+                ],
                 usecase="brand_guidance",
                 reason="split by KPI",
             ),

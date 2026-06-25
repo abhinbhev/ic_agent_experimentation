@@ -31,19 +31,19 @@
 **One Way Marketing** is **Anheuser-Busch InBev’s unified marketing framework** designed to drive sustainable brand growth by aligning strategy, consumer understanding, brand building, innovation, execution, and value creation into one consistent approach.
 ---
 ## The 7 Pillars of One Way Marketing
-1. **Category**  
+1. **Category**
    Identify key category opportunities to lead and grow the market.
-2. **Consumer**  
+2. **Consumer**
    Deeply understand who our target consumers are and what drives them.
-3. **Portfolio & Brand**  
+3. **Portfolio & Brand**
    Prioritize brands and platforms that can drive growth at scale.
-4. **Innovation**  
+4. **Innovation**
    Develop sustainable innovations that meet evolving consumer needs.
-5. **Connections & Creativity**  
+5. **Connections & Creativity**
    Build strong consumer connections through impactful creative and media.
-6. **Trade Execution**  
+6. **Trade Execution**
    Ensure strong in-market execution to drive growth at the point of purchase.
-7. **Value Creation**  
+7. **Value Creation**
    Deliver sustainable business and brand value over the long term.
 
 # Brand and Portfolio
@@ -217,6 +217,7 @@ The following analyses are **not currently supported** and should not be attempt
 |----------------------|------------|
 | **Brand Power** | A 100-sum metric across all brands in a market; a proxy for predicted volume share based on consumer mental perception. |
 | **MDS** | Meaningful, Difference, and Salience — the three primary KPIs that drive Brand Power. |
+| **MDSP** | Meaningful, Difference, Salience, and Power — a shorthand for all four core Brand Guidance KPIs together. When a user asks for "MDSP", retrieve Power, Meaningful, Difference, and Salience. |
 | **Meaningful** | A KPI measuring how well a brand meets consumer needs and builds affinity. |
 | **Difference** | A KPI measuring how distinct or unique a brand is perceived to be. |
 | **Salience** | How quickly and easily a brand comes to mind in buying situations. When Salience is above 120 (indexed), mental availability becomes a more significant driver than physical availability for further growth. |
@@ -247,7 +248,7 @@ The following analyses are **not currently supported** and should not be attempt
 
 ## Usecase definitions
 
-This section defines all KPIs and measures available in the dataset.  
+This section defines all KPIs and measures available in the dataset.
 Each entry includes **definition**, **scale or calculation rule**, and a **sample query** at brand–country level.
 
 ---
@@ -255,28 +256,28 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 ### A) Equity Framework KPIs
 
 #### **Power**
-- **Definition:** Prediction of volume share a brand can command based on consumer predisposition to choose the brand over others.  
+- **Definition:** Prediction of volume share a brand can command based on consumer predisposition to choose the brand over others.
 - **Scale:** Within a market, Power sums to 100 across all brands (both ABI and competitor brands combined).
 - **Example query:** *What is the Power of Budweiser in Brazil in FY 2024?*
 
 #### **Meaning**
-- **Definition:** Extent to which brands build an emotional connection and are seen to deliver against functional needs.  
+- **Definition:** Extent to which brands build an emotional connection and are seen to deliver against functional needs.
 - **Scale:** Indexed at 100 within a market.
 - **Example query:** *Show the Meaning trend of Corona in Mexico from 2020 to 2025.*
 
 #### **Difference**
-- **Definition:** Extent to which brands set themselves apart from the category by offering something others do not and by leading the way.  
-- **Scale:** Indexed at 100 within a market.  
+- **Definition:** Extent to which brands set themselves apart from the category by offering something others do not and by leading the way.
+- **Scale:** Indexed at 100 within a market.
 - **Example query:** *What is the Difference score of Skol in Brazil across age cohorts in 2024?*
 
 #### **Salience**
-- **Definition:** How quickly and easily the brand comes to mind.  
-- **Scale:** Indexed at 100 within a market.  
+- **Definition:** How quickly and easily the brand comes to mind.
+- **Scale:** Indexed at 100 within a market.
 - **Example query:** *Compare the Salience of Heineken in Netherlands across regions in FY 2023.*
 
 #### **Premium**
-- **Definition:** Prediction of price index a brand can support based on consumer predisposition to pay more for the brand than others.  
-- **Scale:** Indexed at 1 within a market. 
+- **Definition:** Prediction of price index a brand can support based on consumer predisposition to pay more for the brand than others.
+- **Scale:** Indexed at 1 within a market.
 - **Example query:** *What is the Premium score of Stella Artois in UK in Q2 2025?*
 
 ---
@@ -284,23 +285,23 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 ### B) Emotional and Functional Equity Sub-scores
 
 #### **Affinity**
-- **Definition:** Emotional connection with the consumer.  
-- **Scale:** Likert scale ranging from -3 to 3.  
+- **Definition:** Emotional connection with the consumer.
+- **Scale:** Likert scale ranging from -3 to 3.
 - **Example query:** *What is the Affinity score of Corona in Mexico across gender cohorts in FY 2024?*
 
 #### **Meet Needs**
-- **Definition:** Fulfillment of functional needs of the consumer.  
-- **Scale:** Likert scale ranging from 1 to 7.  
+- **Definition:** Fulfillment of functional needs of the consumer.
+- **Scale:** Likert scale ranging from 1 to 7.
 - **Example query:** *Show the Meet Needs score of Budweiser in US by income cohorts in FY 2025.*
 
 #### **Unique**
-- **Definition:** Extent to which brands set themselves apart from others.  
-- **Scale:** Likert scale ranging from 1 to 7.  
+- **Definition:** Extent to which brands set themselves apart from others.
+- **Scale:** Likert scale ranging from 1 to 7.
 - **Example query:** *What is the Unique score of Heineken in Germany across regions in 2024?*
 
 #### **Dynamic**
-- **Definition:** Degree to which the brand is trend-setting.  
-- **Scale:** Likert scale ranging from 1 to 7.  
+- **Definition:** Degree to which the brand is trend-setting.
+- **Scale:** Likert scale ranging from 1 to 7.
 - **Example query:** *Show the Dynamic score trend of Cass Fresh in South Korea from 2022 to 2025.*
 
 ---
@@ -308,11 +309,11 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 ### C) Funnel Metrics
 
 #### **Top of Mind**
-- **Definition:** First brand to come to mind.  
+- **Definition:** First brand to come to mind.
 - **Example query:** *What is the Top of Mind score of Quilmes in Argentina in Q1 2025?*
 
 #### **Awareness**
-- **Definition:** Familiarity with a brand.  
+- **Definition:** Familiarity with a brand.
 - **Example query:** *What is the Awareness level of Skol in Brazil in FY 2024?*
 
 #### **Spontaneous Awareness**
@@ -320,16 +321,16 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 - **Example query:** *What is the Spontaneous Awareness of Stella Artois in Belgium in FY 2023?*
 
 #### **Trial**
-- **Definition:** Trial rate of the brand (ever tried).  
+- **Definition:** Trial rate of the brand (ever tried).
 - **Example query:** *What is the Trial score of Corona in Mexico in FY 2024?*
 
 #### **P3M, P4W, P7D**
-- **Definition:** Consumption incidence in the past 3 months (P3M), 4 weeks (P4W), or 7 days (P7D).  
+- **Definition:** Consumption incidence in the past 3 months (P3M), 4 weeks (P4W), or 7 days (P7D).
 - **Example query:** *What is the P3M consumption of Budweiser in US in FY 2024?*
 
 #### **Consideration**
-- **Definition:** Likelihood to choose a brand next time.  
-- **Scale:** 5-point Likert scale.  
+- **Definition:** Likelihood to choose a brand next time.
+- **Scale:** 5-point Likert scale.
 - **Example query:** *What is the Consideration score of Heineken in Netherlands in Q2 2025?*
 
 ---
@@ -370,11 +371,11 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 - **Example query:** *What are the IMF scores of Budweiser in US in FY 2024?*
 
 #### **Most Likely Occasion**
-- **Definition:** Occasion most likely associated with beer consumption.  
+- **Definition:** Occasion most likely associated with beer consumption.
 - **Example query:** *What is the Most Likely Occasion score of Corona in Mexico in FY 2025?*
 
 #### **First Brand Occasion**
-- **Definition:** First brand to come to mind for a given occasion.  
+- **Definition:** First brand to come to mind for a given occasion.
 - **Example query:** *What is the First Brand Occasion score of Skol in Brazil for party occasions in FY 2024?*
 
 ---
@@ -382,13 +383,13 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 ### E) Perceptions of Worth and Cost
 
 #### **Worth**
-- **Definition:** Worth perception of the brand.  
-- **Scale:** Likert scale ranging from 1 to 3.  
+- **Definition:** Worth perception of the brand.
+- **Scale:** Likert scale ranging from 1 to 3.
 - **Example query:** *What is the Worth score of Heineken in Netherlands in FY 2025?*
 
 #### **Cost**
-- **Definition:** Cost perception of the brand.  
-- **Scale:** Likert scale ranging from 1 to 7.  
+- **Definition:** Cost perception of the brand.
+- **Scale:** Likert scale ranging from 1 to 7.
 - **Example query:** *What is the Cost score of Cass Fresh in South Korea in Q3 2024?*
 
 ---
@@ -396,5 +397,5 @@ Each entry includes **definition**, **scale or calculation rule**, and a **sampl
 ### F) Communication Awareness
 
 #### **Total Brand Communication Awareness**
-- **Definition:** Whether consumers have seen, heard, or read about the brand.  
+- **Definition:** Whether consumers have seen, heard, or read about the brand.
 - **Example query:** *What is the Total Brand Communication Awareness of Budweiser in Canada in FY 2023?*

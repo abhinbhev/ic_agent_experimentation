@@ -16,3 +16,15 @@
   description: >
     Use when the user asks generally how a brand is performing in a given
     country over a given period (a brand health / brand guidance check).
+
+- id: kpi_retrieval
+  intent: "What is the [KPI] for given optional granularities like brand, country, period etc?"
+  dataset_family: ["Brand Guidance"]
+  analysis_type: "specific_kpi_analysis"
+  probe_sequence:
+    - "specific KPI value based on the dataset"
+    - "comparative analysis to same period last year"
+  failure_modes: []
+  stop_condition: "all probe areas covered with no major remaining gaps"
+  description: >
+    Use when the user asks for a specific KPI for a brand in a given country over a given period. The probe sequence is precise and exhaustive. The granularities can be brand, country, period, and/or other dimensions relevant to the dataset. There is no need for deeper analysis or additional insights beyond the specific KPI value and its comparative analysis to the same period last year.

@@ -24,6 +24,12 @@ remaining_gaps (each with a "category" of "closed", "partial", "open" or \
 - stop_reason: why the investigation stopped (e.g. "all_major_gaps_closed", \
 "incremental_value_below_threshold", "max_rounds_reached", \
 "max_total_probes_reached").
+- usecase_docs (optional): a mapping from usecase id to a knowledge document \
+describing what the data source covers, KPI definitions, and domain terminology. \
+Use this to correctly interpret metric names and values in the ledger — e.g. to \
+know what a KPI represents, its scale, or what "high" vs "low" means for it.
+- schema_doc (optional): column-level schema of the underlying dataset. Use this \
+to understand what dimensions and breakdowns are available when interpreting the data.
 
 REASONING PROCESS
 Work through the following steps internally. Do not include this reasoning in your \

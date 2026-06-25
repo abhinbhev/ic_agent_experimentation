@@ -70,7 +70,18 @@ class PlannerService:
         tool_calls = []
         for candidate in candidates:
             assignment = assignment_by_candidate.get(candidate.id)
-            questions = assignment.questions if assignment and assignment.questions else [candidate.goal]
+            if assignment is None:
+                # LLM failed to produce an assignment — fall back to the raw goal
+                questions = [candidate.goal]
+            else:
+                questions = [q.text for q in assignment.questions if q.keep]
+                if not questions:
+                    logger.debug(
+                        "Planner: all questions dropped for candidate %r (%s), skipping",
+                        candidate.id,
+                        assignment.reason[:80] if assignment.reason else "no reason",
+                    )
+                    continue
             usecase = assignment.usecase if assignment else default_usecase
             for question in questions:
                 if question.lower() in asked_questions:

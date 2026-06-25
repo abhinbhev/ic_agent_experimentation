@@ -53,10 +53,23 @@ class DecisionEngineService:
 
         stop_reason, continue_ = self._stop_condition(input_data, breakdown)
 
-        if stop_reason in ("max_rounds_reached", "max_total_probes_reached"):
+        if stop_reason in (
+            "max_rounds_reached",
+            "max_total_probes_reached",
+            "no_progress_this_round",
+        ):
+            reason_text = {
+                "max_rounds_reached": "Stopping: maximum rounds reached.",
+                "max_total_probes_reached": "Stopping: maximum total probes reached.",
+                "no_progress_this_round": (
+                    "Stopping: no new evidence was gathered this round — "
+                    "the Planner either produced no questions or every probe was irrelevant. "
+                    "Continuing would not make progress on the remaining gaps."
+                ),
+            }[stop_reason]
             recommendation = GapRecommendation(
                 recommended_next_gap=None,
-                reason=f"Stopping: {stop_reason.replace('_', ' ')}.",
+                reason=reason_text,
             )
         elif stop_reason == "all_major_gaps_closed":
             recommendation = GapRecommendation(
@@ -86,7 +99,9 @@ class DecisionEngineService:
     def _score_breakdown(self, input_data: DecisionEngineInput) -> IncrementalValueBreakdown:
         consultant = input_data.decision_consultant_output
 
-        evidence_coverage = len(consultant.relevant_probes) / max(input_data.total_probes_completed, 1)
+        evidence_coverage = len(consultant.relevant_probes) / max(
+            input_data.total_probes_completed, 1
+        )
 
         confidence = consultant.confidence
 
@@ -99,7 +114,8 @@ class DecisionEngineService:
         )
 
         probe_cost_score = max(
-            0.0, 1.0 - (input_data.total_probes_completed / input_data.probe_budget.max_total_probes)
+            0.0,
+            1.0 - (input_data.total_probes_completed / input_data.probe_budget.max_total_probes),
         )
 
         w = self._weights
@@ -134,6 +150,18 @@ class DecisionEngineService:
 
         if not any(g.category in _UNRESOLVED_GAP_CATEGORIES for g in consultant.remaining_gaps):
             return "all_major_gaps_closed", False
+
+        # Stall detection: stop if the Planner produced nothing to execute, or if
+        # everything it did execute was irrelevant — either way, continuing won't help.
+        if input_data.probes_completed_this_round == 0:
+            return "no_progress_this_round", False
+
+        irrelevant_ids = set(consultant.irrelevant_probes)
+        current_round_ids = {
+            e.probe_id for e in input_data.ledger if e.round_index == input_data.rounds_completed
+        }
+        if current_round_ids and current_round_ids.issubset(irrelevant_ids):
+            return "no_progress_this_round", False
 
         if breakdown.weighted_total < self._weights.stop_threshold:
             return "incremental_value_below_threshold", False

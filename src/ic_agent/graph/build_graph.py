@@ -13,7 +13,11 @@ from langgraph.graph.state import CompiledStateGraph
 
 from ic_agent.config.probe_budget import load_probe_budget_settings
 from ic_agent.config.settings import Settings, get_settings
-from ic_agent.config.usecase_docs import load_question_format_doc, load_schema_doc, load_usecase_docs
+from ic_agent.config.usecase_docs import (
+    load_question_format_doc,
+    load_schema_doc,
+    load_usecase_docs,
+)
 from ic_agent.graph.edges import route_after_decision_engine
 from ic_agent.graph.nodes import (
     make_decision_consultant_node,
@@ -49,7 +53,9 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
     planner_consultant_service = PlannerConsultantService(get_chat_model(settings))
     usecase_docs = load_usecase_docs(domain_config.domain_id, settings.usecase_docs_dir)
     schema_doc = load_schema_doc(domain_config.domain_id, settings.usecase_docs_dir)
-    question_format_doc = load_question_format_doc(domain_config.domain_id, settings.usecase_docs_dir)
+    question_format_doc = load_question_format_doc(
+        domain_config.domain_id, settings.usecase_docs_dir
+    )
     planner_service = PlannerService(
         domain_config,
         usecase_docs,
@@ -63,7 +69,12 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
     decision_engine_service = DecisionEngineService(
         domain_config, get_chat_model(settings), weights=budget_settings.incremental_value_weights
     )
-    synthesizer_service = SynthesizerService(domain_config, get_chat_model(settings))
+    synthesizer_service = SynthesizerService(
+        domain_config,
+        get_chat_model(settings),
+        usecase_docs=usecase_docs,
+        schema_doc=schema_doc,
+    )
 
     graph = StateGraph(AgentState)
 
@@ -71,9 +82,12 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
     graph.add_node("planner_consultant", make_planner_consultant_node(planner_consultant_service))
     graph.add_node("planner", make_planner_node(planner_service))
     graph.add_node("execution", make_execution_node(retrieval_service))
-    graph.add_node("decision_consultant", make_decision_consultant_node(decision_consultant_service))
     graph.add_node(
-        "decision_engine", make_decision_engine_node(decision_engine_service, budget_settings.probe_budget)
+        "decision_consultant", make_decision_consultant_node(decision_consultant_service)
+    )
+    graph.add_node(
+        "decision_engine",
+        make_decision_engine_node(decision_engine_service, budget_settings.probe_budget),
     )
     graph.add_node("synthesis", make_synthesis_node(synthesizer_service))
 
