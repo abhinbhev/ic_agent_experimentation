@@ -71,13 +71,24 @@
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
   .graph-wrap {
-    flex: 1; overflow: auto; padding: 10px;
+    flex: 1; overflow: auto; padding: 10px; position: relative;
     background:
       linear-gradient(var(--panel) 1px, transparent 1px) 0 0/100% 28px,
       linear-gradient(90deg, var(--panel) 1px, transparent 1px) 0 0/28px 100%,
       var(--panel2);
   }
+  .graph-wrap.panning { cursor: grabbing; }
+  .graph-wrap:not(.panning) svg { cursor: grab; }
   svg { display: block; }
+  #zoom-indicator {
+    position: absolute; bottom: 8px; right: 12px;
+    background: rgba(23,28,46,.85); color: var(--muted);
+    font-size: 10.5px; font-weight: 700;
+    padding: 3px 8px; border-radius: 6px;
+    pointer-events: none; opacity: 0; transition: opacity .25s;
+    letter-spacing: .05em;
+  }
+  #zoom-indicator.show { opacity: 1; }
 
   /* SUPER-ROUND bands */
   .super-round-band {
@@ -205,6 +216,7 @@
     <div class="controls">
       <button class="ctrl-btn" onclick="expandAll()" title="Expand all">⤢</button>
       <button class="ctrl-btn" onclick="collapseAll()" title="Collapse all">⤡</button>
+      <button class="ctrl-btn icon" onclick="zoomReset()" title="Reset zoom (or double-click)">⌖</button>
       <span class="status-pill" id="status-pill"><span class="pulse"></span> Waiting…</span>
     </div>
   </header>
@@ -213,6 +225,7 @@
       Run an investigation to see the live question graph here.
     </div>
     <svg id="graph" width="100" height="100" style="display:none"></svg>
+    <div id="zoom-indicator">100%</div>
   </div>
 </div>
 <div id="tooltip"></div>
@@ -238,10 +251,18 @@ function mk(tag, attrs) {
   for (const k in attrs) el.setAttribute(k, attrs[k]);
   return el;
 }
+function ensureViewport() {
+  if (!document.getElementById("layer-viewport")) {
+    const g = mk("g", { id: "layer-viewport" });
+    svg.appendChild(g);
+  }
+}
 function ensureLayer(name) {
+  ensureViewport();
+  const viewport = document.getElementById("layer-viewport");
   if (!document.getElementById("layer-" + name)) {
     const g = mk("g", { id: "layer-" + name });
-    svg.appendChild(g);
+    viewport.appendChild(g);
   }
 }
 function expandAll() { collapsed.clear(); render(); }
@@ -597,7 +618,121 @@ function moveTip(e) {
 function hideTip() { tip.style.opacity = 0; }
 function escapeHtml(s) { return (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
+/* ============================================================
+ * Zoom + Pan controller
+ *   - mouse wheel  → zoom in/out toward cursor
+ *   - ctrl+wheel   → also zoom (in case host page steals wheel)
+ *   - drag empty   → pan
+ *   - double-click → reset
+ *   - shift+wheel  → horizontal pan (no zoom)
+ * Transform is applied to <g id="layer-viewport">, so layout
+ * code and node positions remain untouched.
+ * ============================================================ */
+const Zoom = (() => {
+  const MIN = 0.25, MAX = 3.0, STEP = 1.12;
+  const STORAGE_KEY = "qgraph-zoom-v1";
+  let scale = 1, tx = 0, ty = 0;
+  let isPanning = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
+  let indicatorTimer = null;
+
+  // Restore state from a prior render of this iframe so live updates
+  // don't slam the user back to 100% on every poll.
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (typeof s.scale === "number") scale = Math.min(MAX, Math.max(MIN, s.scale));
+      if (typeof s.tx === "number") tx = s.tx;
+      if (typeof s.ty === "number") ty = s.ty;
+    }
+  } catch (_) { /* ignore */ }
+
+  function persist() {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ scale, tx, ty })); } catch (_) {}
+  }
+  function getViewport() { return document.getElementById("layer-viewport"); }
+  function apply(silent) {
+    const vp = getViewport();
+    if (!vp) return;
+    vp.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+    persist();
+    if (!silent) showIndicator();
+  }
+  function showIndicator() {
+    const ind = document.getElementById("zoom-indicator");
+    if (!ind) return;
+    ind.textContent = Math.round(scale * 100) + "%";
+    ind.classList.add("show");
+    clearTimeout(indicatorTimer);
+    indicatorTimer = setTimeout(() => ind.classList.remove("show"), 900);
+  }
+  function reset() {
+    scale = 1; tx = 0; ty = 0;
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    apply();
+  }
+  function zoomAt(clientX, clientY, factor) {
+    const wrap = document.getElementById("graph-wrap");
+    const rect = wrap.getBoundingClientRect();
+    const px = clientX - rect.left + wrap.scrollLeft;
+    const py = clientY - rect.top + wrap.scrollTop;
+    const newScale = Math.min(MAX, Math.max(MIN, scale * factor));
+    if (newScale === scale) return;
+    tx = px - (px - tx) * (newScale / scale);
+    ty = py - (py - ty) * (newScale / scale);
+    scale = newScale;
+    apply();
+  }
+  function bind() {
+    const wrap = document.getElementById("graph-wrap");
+    if (!wrap || wrap._zoomBound) return;
+    wrap._zoomBound = true;
+
+    wrap.addEventListener("wheel", e => {
+      if (e.shiftKey) return; // let the browser do horizontal scroll
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? STEP : 1 / STEP;
+      zoomAt(e.clientX, e.clientY, factor);
+    }, { passive: false });
+
+    wrap.addEventListener("pointerdown", e => {
+      // only start panning on background (svg/empty area), not on nodes
+      if (e.target.closest(".node-box")) return;
+      if (e.button !== 0 && e.button !== 1) return;
+      isPanning = true;
+      dragStartX = e.clientX; dragStartY = e.clientY;
+      startTx = tx; startTy = ty;
+      wrap.classList.add("panning");
+      wrap.setPointerCapture(e.pointerId);
+    });
+    wrap.addEventListener("pointermove", e => {
+      if (!isPanning) return;
+      tx = startTx + (e.clientX - dragStartX);
+      ty = startTy + (e.clientY - dragStartY);
+      apply();
+    });
+    const endPan = e => {
+      if (!isPanning) return;
+      isPanning = false;
+      wrap.classList.remove("panning");
+      try { wrap.releasePointerCapture(e.pointerId); } catch(_) {}
+    };
+    wrap.addEventListener("pointerup", endPan);
+    wrap.addEventListener("pointercancel", endPan);
+    wrap.addEventListener("dblclick", e => {
+      if (e.target.closest(".node-box")) return;
+      reset();
+    });
+  }
+  return { bind, reset, apply };
+})();
+function zoomReset() { Zoom.reset(); }
+
+Zoom.bind();
 render();
+// Re-apply persisted zoom *after* render so the new viewport <g> exists.
+// Silent: no indicator flash on automatic restore between polls.
+Zoom.apply(true);
 </script>
 </body>
 </html>
