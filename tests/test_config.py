@@ -37,22 +37,22 @@ def test_load_probe_budget_settings_from_yaml():
     assert settings.score_fusion.embedding_weight == 0.5
     assert settings.score_fusion.fusion_method == "weighted_sum"
 
-    assert settings.incremental_value_weights.stop_threshold == 0.35
+    assert settings.incremental_value_weights.stop_threshold == 0.30
 
 
 def test_load_probe_budget_settings_missing_file_uses_defaults():
     settings = load_probe_budget_settings("config/does_not_exist.yaml")
 
     assert settings.probe_budget.max_rounds == 5
-    assert settings.incremental_value_weights.evidence_coverage == 0.30
+    assert settings.incremental_value_weights.unresolved_gaps == 0.40
 
 
 def test_incremental_value_weights_must_sum_to_one():
     with pytest.raises(ValueError):
         IncrementalValueWeights(
-            evidence_coverage=0.5,
-            confidence=0.5,
-            remaining_gaps=0.5,
-            alternative_hypotheses=0.5,
-            probe_cost=0.5,
+            unresolved_gaps=0.5,
+            low_confidence=0.5,
+            new_hypotheses=0.5,
+            irrelevance=0.5,
+            budget_headroom=0.5,
         )

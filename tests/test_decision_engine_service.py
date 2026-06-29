@@ -54,20 +54,20 @@ def test_weighted_score_and_continue(
     )
 
     b = output.value_breakdown
-    assert b.evidence_coverage == pytest.approx(2 / 5)
-    assert b.confidence == pytest.approx(0.7)
-    assert b.remaining_gaps_score == pytest.approx(0.5)  # 1 open out of 2
-    assert b.alternative_hypotheses_score == pytest.approx(
-        1 / 3
-    )  # 1 new hypothesis / assumed max 3
-    assert b.probe_cost_score == pytest.approx(1 - 5 / 20)
+    # 2 relevant of 5 total -> 60% irrelevant
+    assert b.irrelevance_score == pytest.approx(1 - 2 / 5)
+    # confidence 0.7 -> low_confidence 0.3
+    assert b.low_confidence_score == pytest.approx(0.3)
+    assert b.unresolved_gaps_score == pytest.approx(0.5)  # 1 open out of 2
+    assert b.new_hypotheses_score == pytest.approx(1 / 3)  # 1 new hypothesis / assumed max 3
+    assert b.budget_headroom_score == pytest.approx(1 - 5 / 20)
 
     expected_total = (
-        0.30 * b.evidence_coverage
-        + 0.25 * b.confidence
-        + 0.20 * b.remaining_gaps_score
-        + 0.15 * b.alternative_hypotheses_score
-        + 0.10 * b.probe_cost_score
+        0.40 * b.unresolved_gaps_score
+        + 0.30 * b.low_confidence_score
+        + 0.20 * b.new_hypotheses_score
+        + 0.05 * b.irrelevance_score
+        + 0.05 * b.budget_headroom_score
     )
     assert output.expected_incremental_value == pytest.approx(expected_total)
     assert output.expected_incremental_value >= sample_incremental_value_weights.stop_threshold
@@ -162,12 +162,20 @@ def test_stop_all_major_gaps_closed(
 def test_stop_incremental_value_below_threshold(
     sample_domain_config, sample_evidence_ledger, sample_incremental_value_weights
 ):
+    """A near-done state — most gaps closed, high confidence, fully relevant probes,
+    no new hypotheses — should fall below the stop threshold and stop early."""
     consultant_output = DecisionConsultantOutput(
-        relevant_probes=[],
-        irrelevant_probes=[e.probe_id for e in sample_evidence_ledger],
-        remaining_gaps=[RemainingGap(description="pricing contribution", category="open")],
+        relevant_probes=[e.probe_id for e in sample_evidence_ledger],
+        irrelevant_probes=[],
+        remaining_gaps=[
+            RemainingGap(description="closed-1", category="closed"),
+            RemainingGap(description="closed-2", category="closed"),
+            RemainingGap(description="closed-3", category="closed"),
+            RemainingGap(description="closed-4", category="closed"),
+            RemainingGap(description="minor partial", category="partial"),
+        ],
         new_hypotheses=[],
-        confidence=0.1,
+        confidence=0.9,
     )
     service = _service(sample_domain_config, sample_incremental_value_weights)
 
@@ -177,7 +185,7 @@ def test_stop_incremental_value_below_threshold(
             decision_consultant_output=consultant_output,
             rounds_completed=1,
             probes_completed_this_round=2,
-            total_probes_completed=19,
+            total_probes_completed=5,
             probe_budget=ProbeBudgetConfig(max_total_probes=20),
         )
     )
