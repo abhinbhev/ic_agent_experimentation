@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Unified Agent — Live Question Graph (Mock)</title>
+<style>
+  :root {
+    --bg: #0f1320;
+    --panel: #171c2e;
+    --panel2: #1d2238;
+    --text: #e8eaf2;
+    --muted: #9aa3bd;
+    --line: #3a4262;
+
+    --root: #ffd166;
+    --super-probe: #5b6cf0;
+    --domain-bg: #c84cb1;   /* brand_guidance */
+    --domain-cat: #2fa86b;  /* category */
+    --leaf: #62e0a1;
+
+    --status-pending: #5a6380;
+    --status-running: #ffb547;
+    --status-done: #62e0a1;
+    --status-failed: #ff6b7d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 520px;
+    height: 100vh;
+  }
+
+  /* LEFT — mock chat / streaming output area (placeholder for the actual Streamlit body) */
+  .left {
+    padding: 24px;
+    overflow-y: auto;
+    border-right: 1px solid #2a3050;
+  }
+  .left h1 { margin: 0 0 4px; font-size: 20px; }
+  .left .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  .left .stream-item {
+    background: var(--panel);
+    border: 1px solid #2a3050;
+    border-left: 3px solid var(--super-probe);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .left .stream-item .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+  .left .stream-item.done { border-left-color: var(--status-done); }
+  .left .stream-item.running { border-left-color: var(--status-running); }
+  .left .placeholder-note {
+    margin-top: 30px; padding: 14px; background: rgba(91,108,240,.08);
+    border: 1px dashed var(--super-probe); border-radius: 8px;
+    font-size: 13px; color: var(--muted);
+  }
+
+  /* RIGHT — question graph */
+  .right {
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    height: 100vh;
+  }
+  .right header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #2a3050;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .right h2 { margin: 0; font-size: 15px; }
+  .right .status-pill {
+    background: var(--status-running); color: #1a1206;
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 999px; display: flex; align-items: center; gap: 6px;
+  }
+  .pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #1a1206; animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .graph-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 12px;
+    background:
+      linear-gradient(var(--panel) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--panel) 1px, transparent 1px) 0 0/28px 100%,
+      var(--panel2);
+  }
+
+  svg { display: block; }
+
+  /* nodes */
+  .node-box {
+    cursor: pointer;
+    transition: filter .12s;
+  }
+  .node-box:hover { filter: brightness(1.2); }
+  .node-box rect.bg {
+    stroke-width: 2;
+    rx: 6;
+  }
+  .node-box.root rect.bg { fill: #2d2814; stroke: var(--root); }
+  .node-box.super-probe rect.bg { fill: #1d2244; stroke: var(--super-probe); }
+  .node-box.domain rect.bg { stroke-width: 2; }
+  .node-box.domain.brand_guidance rect.bg { fill: #3a1f33; stroke: var(--domain-bg); }
+  .node-box.domain.category rect.bg { fill: #1d3328; stroke: var(--domain-cat); }
+  .node-box.sub-probe rect.bg { fill: #1a2e25; stroke: #4ec99d; }
+  .node-box.leaf rect.bg { fill: #102018; stroke: var(--leaf); stroke-dasharray: 4 2; }
+
+  .node-box text.label { fill: var(--text); font-size: 11.5px; }
+  .node-box text.tag { fill: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* status dot */
+  .status-dot { stroke: #0f1320; stroke-width: 1.5; }
+  .status-dot.pending { fill: var(--status-pending); }
+  .status-dot.running { fill: var(--status-running); }
+  .status-dot.done { fill: var(--status-done); }
+  .status-dot.failed { fill: var(--status-failed); }
+
+  .running-glow { animation: glow 1.4s ease-in-out infinite; }
+  @keyframes glow {
+    0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 6px var(--status-running)); }
+  }
+
+  /* edges */
+  .edge { fill: none; stroke: var(--line); stroke-width: 1.5; }
+  .edge.running { stroke: var(--status-running); stroke-width: 2; stroke-dasharray: 4 3; animation: dash 1.2s linear infinite; }
+  .edge.done { stroke: var(--status-done); stroke-width: 1.5; opacity: .6; }
+  @keyframes dash { to { stroke-dashoffset: -14; } }
+
+  /* legend at bottom */
+  .legend {
+    border-top: 1px solid #2a3050;
+    padding: 10px 16px;
+    display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px;
+    background: var(--panel);
+  }
+  .legend .item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .swatch { width: 12px; height: 10px; border-radius: 3px; border: 2px solid; }
+  .sw-root { background: #2d2814; border-color: var(--root); }
+  .sw-super { background: #1d2244; border-color: var(--super-probe); }
+  .sw-bg { background: #3a1f33; border-color: var(--domain-bg); }
+  .sw-cat { background: #1d3328; border-color: var(--domain-cat); }
+  .sw-sub { background: #1a2e25; border-color: #4ec99d; }
+  .sw-leaf { background: #102018; border-color: var(--leaf); border-style: dashed; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .dot.pending { background: var(--status-pending); }
+  .dot.running { background: var(--status-running); }
+  .dot.done { background: var(--status-done); }
+  .dot.failed { background: var(--status-failed); }
+
+  /* tooltip */
+  #tooltip {
+    position: fixed; pointer-events: none; opacity: 0;
+    background: #0a0d18; border: 1px solid var(--super-probe);
+    padding: 8px 10px; border-radius: 6px; max-width: 320px;
+    font-size: 12px; line-height: 1.45; color: var(--text);
+    box-shadow: 0 4px 20px rgba(0,0,0,.5); z-index: 100;
+    transition: opacity .12s;
+  }
+  #tooltip .tt-meta { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  #tooltip .tt-status { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+  #tooltip .tt-status.pending { background: var(--status-pending); color: #d8dcec; }
+  #tooltip .tt-status.running { background: var(--status-running); color: #1a1206; }
+  #tooltip .tt-status.done { background: var(--status-done); color: #042417; }
+  #tooltip .tt-status.failed { background: var(--status-failed); color: #2d0408; }
+
+  /* controls */
+  .controls {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .ctrl-btn {
+    background: var(--panel2); border: 1px solid #2a3050; color: var(--text);
+    border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .ctrl-btn:hover { background: #232a4a; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- LEFT — placeholder for the existing Streamlit body -->
+  <div class="left">
+    <h1>Unified Domain Analysis</h1>
+    <p class="subtitle">Cross-domain investigation — mock view</p>
+
+    <div class="stream-item done">
+      <div class="meta">User question</div>
+      How did Brahma perform in Brazil in Q1 2026 across perception and consumption?
+    </div>
+
+    <div class="stream-item done">
+      <div class="meta">Unified Planner Consultant — Round 1</div>
+      Drafted 3 hypotheses + 3 probe candidates spanning brand perception and consumption behaviour.
+    </div>
+
+    <div class="stream-item done">
+      <div class="meta">Domain Router — Round 1</div>
+      Routed P1 → brand_guidance · P2 → category · P3 → both (multi-domain probe).
+    </div>
+
+    <div class="stream-item running">
+      <div class="meta">Domain Agent Executor — Round 1 · 2 of 4 complete</div>
+      Running 4 sub-agents in parallel… <i>category/P2</i> finishing, <i>brand_guidance/P3</i> still investigating power and imagery.
+    </div>
+
+    <div class="placeholder-note">
+      ← This whole left side is the existing Streamlit stream of node updates,
+      shown here only as a placeholder. The interesting part is on the right →
+    </div>
+  </div>
+
+  <!-- RIGHT — question graph -->
+  <div class="right">
+    <header>
+      <h2>🕸 Live Question Graph</h2>
+      <div class="controls">
+        <button class="ctrl-btn" onclick="setStep(Math.max(0, currentStep-1))">◀</button>
+        <button class="ctrl-btn" onclick="setStep(Math.min(5, currentStep+1))">▶</button>
+        <button class="ctrl-btn" onclick="autoplay()">▶▶ Auto</button>
+        <span class="status-pill" id="status-pill"><span class="pulse"></span> Live</span>
+      </div>
+    </header>
+
+    <div class="graph-wrap">
+      <svg id="graph" width="1200" height="900"></svg>
+    </div>
+
+    <div class="legend">
+      <div class="item"><span class="swatch sw-root"></span> User question</div>
+      <div class="item"><span class="swatch sw-super"></span> Super-agent probe</div>
+      <div class="item"><span class="swatch sw-bg"></span> Domain: brand_guidance</div>
+      <div class="item"><span class="swatch sw-cat"></span> Domain: category</div>
+      <div class="item"><span class="swatch sw-sub"></span> Sub-agent probe</div>
+      <div class="item"><span class="swatch sw-leaf"></span> Retrieval question</div>
+      <div class="item" style="margin-left:auto"><span class="dot pending"></span> pending</div>
+      <div class="item"><span class="dot running"></span> running</div>
+      <div class="item"><span class="dot done"></span> done</div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+/* ============================================================
+ * MOCK DATA — represents the running question tree at various
+ * snapshots. In the real implementation this would be built up
+ * incrementally as the super-agent streams events.
+ * ============================================================ */
+const TREE = {
+  id: "root", kind: "root", label: "How did Brahma perform in Brazil in Q1 2026 across perception and consumption?",
+  meta: "User Question · Round 0",
+  status: "done",
+  children: [
+    {
+      id: "P1", kind: "super-probe",
+      label: "Has Brahma's brand strength shifted in Brazil this quarter?",
+      meta: "Super-Probe · expected_value=high",
+      status: "done",
+      children: [
+        {
+          id: "P1-bg", kind: "domain", domain: "brand_guidance",
+          label: "What is Brahma's brand strength and key equity drivers in Brazil in Q1 2026 vs prior periods?",
+          meta: "Domain: brand_guidance · scoped question",
+          status: "done",
+          children: [
+            { id: "P1-bg-s1", kind: "sub-probe",
+              label: "How did Brahma's overall brand power change in Brazil in Q1 2026 vs prior quarters?",
+              meta: "Sub-agent probe", status: "done",
+              children: [
+                { id: "P1-bg-s1-r1", kind: "leaf",
+                  label: "What is the power of Brahma in Brazil in Q1 2026, Q4 2025, Q1 2025?",
+                  meta: "Retrieval call · KPI: power", status: "done" },
+              ]
+            },
+            { id: "P1-bg-s2", kind: "sub-probe",
+              label: "Which equity drivers explain the movement (meaningful / difference / salience)?",
+              meta: "Sub-agent probe", status: "done",
+              children: [
+                { id: "P1-bg-s2-r1", kind: "leaf",
+                  label: "What are the meaningful, difference, salience of Brahma in Brazil in Q1 2026 and Q4 2025?",
+                  meta: "Retrieval call · multi-KPI", status: "done" },
+              ]
+            },
+          ]
+        }
+      ]
+    },
+    {
+      id: "P2", kind: "super-probe",
+      label: "Are consumers actually drinking Brahma more or less?",
+      meta: "Super-Probe · expected_value=high",
+      status: "done",
+      children: [
+        {
+          id: "P2-cat", kind: "domain", domain: "category",
+          label: "What are Brahma's consumption trends in Brazil for Q1 2026 vs prior quarters?",
+          meta: "Domain: category · scoped question",
+          status: "running",
+          children: [
+            { id: "P2-cat-s1", kind: "sub-probe",
+              label: "How has past-7-day Brahma consumption changed in Brazil?",
+              meta: "Sub-agent probe", status: "done",
+              children: [
+                { id: "P2-cat-s1-r1", kind: "leaf",
+                  label: "What is consumption_past_seven_days for Brahma in Brazil in Q1 2026 and Q4 2025?",
+                  meta: "Retrieval call · KPI: consumption_past_seven_days", status: "done" },
+              ]
+            },
+            { id: "P2-cat-s2", kind: "sub-probe",
+              label: "Has the 4-week consumption pattern moved similarly?",
+              meta: "Sub-agent probe", status: "running",
+              children: [
+                { id: "P2-cat-s2-r1", kind: "leaf",
+                  label: "What is consumption_past_four_weeks for Brahma in Brazil in Q1 2026, Q4 2025?",
+                  meta: "Retrieval call · KPI: consumption_past_four_weeks", status: "running" },
+              ]
+            },
+          ]
+        }
+      ]
+    },
+    {
+      id: "P3", kind: "super-probe",
+      label: "Is perception strength translating into consumption (or diverging)?",
+      meta: "Super-Probe · multi-domain · expected_value=medium",
+      status: "running",
+      children: [
+        {
+          id: "P3-bg", kind: "domain", domain: "brand_guidance",
+          label: "What is Brahma's awareness and consideration in Brazil in Q1 2026 across age cohorts?",
+          meta: "Domain: brand_guidance · scoped question",
+          status: "running",
+          children: [
+            { id: "P3-bg-s1", kind: "sub-probe",
+              label: "Which age cohorts show the strongest awareness shift?",
+              meta: "Sub-agent probe", status: "running",
+              children: [
+                { id: "P3-bg-s1-r1", kind: "leaf",
+                  label: "What is awareness for Brahma in Brazil in Q1 2026 by age cohort?",
+                  meta: "Retrieval call · KPI: awareness", status: "running" },
+              ]
+            },
+          ]
+        },
+        {
+          id: "P3-cat", kind: "domain", domain: "category",
+          label: "What are Brahma's consumption patterns in Brazil in Q1 2026 by age cohort?",
+          meta: "Domain: category · scoped question",
+          status: "pending",
+          children: [
+            { id: "P3-cat-s1", kind: "sub-probe",
+              label: "Does consumption track awareness across cohorts?",
+              meta: "Sub-agent probe", status: "pending",
+              children: [
+                { id: "P3-cat-s1-r1", kind: "leaf",
+                  label: "What is consumption_past_four_weeks for Brahma in Brazil in Q1 2026 by age cohort?",
+                  meta: "Retrieval call · KPI: consumption_past_four_weeks", status: "pending" },
+              ]
+            },
+          ]
+        }
+      ]
+    },
+  ]
+};
+
+/* Step-snapshots: cumulative status by node id, illustrating how
+ * the graph would build & light up over time. */
+const STEPS = [
+  { name: "Question received", patch: { root: "done" } },
+  { name: "Planner Consultant + Domain Router done",
+    patch: { P1: "pending", P2: "pending", P3: "pending",
+             "P1-bg": "pending", "P2-cat": "pending", "P3-bg": "pending", "P3-cat": "pending" } },
+  { name: "Sub-agents start (parallel)",
+    patch: { "P1-bg": "running", "P2-cat": "running", "P3-bg": "running",
+             "P1-bg-s1": "running", "P2-cat-s1": "running", "P3-bg-s1": "running",
+             "P1-bg-s1-r1": "running", "P2-cat-s1-r1": "running", "P3-bg-s1-r1": "running",
+             P1: "running", P2: "running", P3: "running" } },
+  { name: "First retrieval calls complete",
+    patch: { "P1-bg-s1": "done", "P1-bg-s1-r1": "done",
+             "P2-cat-s1": "done", "P2-cat-s1-r1": "done",
+             "P1-bg-s2": "running", "P1-bg-s2-r1": "running",
+             "P2-cat-s2": "running", "P2-cat-s2-r1": "running" } },
+  { name: "brand_guidance/P1 finishes",
+    patch: { "P1-bg-s2": "done", "P1-bg-s2-r1": "done",
+             "P1-bg": "done", P1: "done" } },
+  { name: "Current live state (showing this)",
+    patch: {} },  // no further changes — uses TREE.status defaults
+];
+
+let currentStep = 5;
+
+function applyStepStatuses() {
+  /* compose statuses up to currentStep on top of TREE base */
+  const statusById = {};
+  walk(TREE, n => statusById[n.id] = n.status);
+  for (let i = 0; i <= currentStep; i++) {
+    Object.assign(statusById, STEPS[i].patch);
+  }
+  walk(TREE, n => n._effectiveStatus = statusById[n.id] || n.status);
+}
+
+function walk(n, fn) { fn(n); (n.children || []).forEach(c => walk(c, fn)); }
+
+/* ============================================================
+ * LAYOUT — simple top-down tiered tree
+ * Tiers: 0=root, 1=super-probe, 2=domain, 3=sub-probe, 4=leaf
+ * ============================================================ */
+function layout(tree) {
+  const tiers = [[], [], [], [], []];
+  const tierOf = { "root": 0, "super-probe": 1, "domain": 2, "sub-probe": 3, "leaf": 4 };
+  walk(tree, n => tiers[tierOf[n.kind]].push(n));
+
+  const NODE_W = 230, NODE_H = 56, V_GAP = 80, H_GAP = 18;
+  let totalH = tiers.length * (NODE_H + V_GAP);
+  let maxRowW = 0;
+
+  tiers.forEach((row, ti) => {
+    const totalW = row.length * NODE_W + (row.length - 1) * H_GAP;
+    maxRowW = Math.max(maxRowW, totalW);
+    row.forEach((n, i) => {
+      n._x = i * (NODE_W + H_GAP);  // temp — re-centered below
+      n._tier = ti;
+      n._y = ti * (NODE_H + V_GAP) + 30;
+      n._w = NODE_W;
+      n._h = NODE_H;
+    });
+  });
+
+  const svgW = Math.max(maxRowW + 60, 1200);
+  tiers.forEach(row => {
+    const totalW = row.length * NODE_W + (row.length - 1) * H_GAP;
+    const offset = (svgW - totalW) / 2;
+    row.forEach((n, i) => { n._x = offset + i * (NODE_W + H_GAP); });
+  });
+
+  return { svgW, svgH: totalH + 40 };
+}
+
+/* ============================================================
+ * RENDER
+ * ============================================================ */
+function render() {
+  applyStepStatuses();
+  const { svgW, svgH } = layout(TREE);
+  const svg = document.getElementById("graph");
+  svg.setAttribute("width", svgW);
+  svg.setAttribute("height", svgH);
+  svg.innerHTML = "";
+
+  /* edges first */
+  const edges = [];
+  walk(TREE, n => (n.children || []).forEach(c => edges.push([n, c])));
+  for (const [a, b] of edges) {
+    const x1 = a._x + a._w / 2, y1 = a._y + a._h;
+    const x2 = b._x + b._w / 2, y2 = b._y;
+    const my = (y1 + y2) / 2;
+    const d = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    let cls = "edge";
+    if (b._effectiveStatus === "running") cls += " running";
+    else if (b._effectiveStatus === "done") cls += " done";
+    p.setAttribute("d", d);
+    p.setAttribute("class", cls);
+    svg.appendChild(p);
+  }
+
+  /* nodes */
+  walk(TREE, n => {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("class", `node-box ${n.kind}${n.domain ? " " + n.domain : ""}${n._effectiveStatus === "running" ? " running-glow" : ""}`);
+    g.setAttribute("transform", `translate(${n._x}, ${n._y})`);
+
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("class", "bg");
+    rect.setAttribute("width", n._w);
+    rect.setAttribute("height", n._h);
+    rect.setAttribute("rx", 6);
+    g.appendChild(rect);
+
+    /* status dot */
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("class", `status-dot ${n._effectiveStatus}`);
+    dot.setAttribute("cx", n._w - 11);
+    dot.setAttribute("cy", 11);
+    dot.setAttribute("r", 5);
+    g.appendChild(dot);
+
+    /* kind tag */
+    const tag = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    tag.setAttribute("class", "tag");
+    tag.setAttribute("x", 9);
+    tag.setAttribute("y", 14);
+    tag.textContent = kindLabel(n);
+    g.appendChild(tag);
+
+    /* label (wrapped manually to 2 lines) */
+    const lines = wrapText(n.label, 32);
+    lines.slice(0, 2).forEach((line, i) => {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("class", "label");
+      t.setAttribute("x", 9);
+      t.setAttribute("y", 30 + i * 14);
+      t.textContent = line + (i === 1 && lines.length > 2 ? "…" : "");
+      g.appendChild(t);
+    });
+
+    /* tooltip */
+    g.addEventListener("mouseenter", e => showTip(e, n));
+    g.addEventListener("mousemove", moveTip);
+    g.addEventListener("mouseleave", hideTip);
+
+    svg.appendChild(g);
+  });
+
+  document.getElementById("status-pill").innerHTML = currentStep === STEPS.length - 1
+    ? '<span class="pulse"></span> Live · ' + STEPS[currentStep].name
+    : 'Snapshot ' + (currentStep + 1) + '/' + STEPS.length + ' · ' + STEPS[currentStep].name;
+}
+
+function kindLabel(n) {
+  switch (n.kind) {
+    case "root": return "USER QUESTION";
+    case "super-probe": return "SUPER-AGENT PROBE · " + n.id;
+    case "domain": return "DOMAIN · " + (n.domain === "brand_guidance" ? "brand_guidance" : "category");
+    case "sub-probe": return "SUB-AGENT PROBE";
+    case "leaf": return "RETRIEVAL";
+  }
+}
+function wrapText(text, maxChars) {
+  const words = text.split(" "), lines = [];
+  let line = "";
+  for (const w of words) {
+    if ((line + " " + w).trim().length > maxChars) { lines.push(line.trim()); line = w; }
+    else line += " " + w;
+  }
+  if (line.trim()) lines.push(line.trim());
+  return lines;
+}
+
+/* tooltip */
+const tip = document.getElementById("tooltip");
+function showTip(e, n) {
+  tip.innerHTML = `<div class="tt-meta">${n.meta}<span class="tt-status ${n._effectiveStatus}">${n._effectiveStatus}</span></div>${n.label}`;
+  tip.style.opacity = 1;
+  moveTip(e);
+}
+function moveTip(e) {
+  tip.style.left = (e.clientX + 14) + "px";
+  tip.style.top = (e.clientY + 14) + "px";
+}
+function hideTip() { tip.style.opacity = 0; }
+
+function setStep(i) { currentStep = i; render(); }
+let autoTimer = null;
+function autoplay() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; return; }
+  currentStep = 0;
+  render();
+  autoTimer = setInterval(() => {
+    if (currentStep >= STEPS.length - 1) { clearInterval(autoTimer); autoTimer = null; return; }
+    currentStep++;
+    render();
+  }, 1400);
+}
+
+render();
+</script>
+</body>
+</html>

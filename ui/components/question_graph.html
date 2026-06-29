@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live Question Graph</title>
+<style>
+  :root {
+    --bg: #0f1320;
+    --panel: #171c2e;
+    --panel2: #1d2238;
+    --text: #e8eaf2;
+    --muted: #9aa3bd;
+    --line: #3a4262;
+
+    --root: #ffd166;
+    --super-probe: #5b6cf0;
+    --domain-bg: #c84cb1;
+    --domain-cat: #2fa86b;
+
+    --super-round-1: rgba(255,209,102,.05);
+    --super-round-2: rgba(91,108,240,.06);
+    --super-round-3: rgba(98,224,161,.06);
+    --super-round-border-1: rgba(255,209,102,.45);
+    --super-round-border-2: rgba(91,108,240,.55);
+    --super-round-border-3: rgba(98,224,161,.55);
+
+    --sub-round-band: rgba(77,200,224,.05);
+    --sub-round-text: rgba(77,200,224,.7);
+
+    --status-pending: #5a6380;
+    --status-asked: #6f7ba0;
+    --status-running: #ffb547;
+    --status-answered: #62e0a1;
+    --status-failed: #ff6b7d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--panel); color: var(--text);
+    height: 100%; overflow: hidden;
+  }
+  .wrap {
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    padding: 10px 14px; border-bottom: 1px solid #2a3050;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    flex-wrap: wrap; flex: 0 0 auto;
+  }
+  h2 { margin: 0; font-size: 14px; white-space: nowrap; }
+  .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .ctrl-btn {
+    background: var(--panel2); border: 1px solid #2a3050; color: var(--text);
+    border-radius: 4px; padding: 3px 9px; font-size: 12px; cursor: pointer;
+    transition: background .12s;
+  }
+  .ctrl-btn:hover { background: #232a4a; }
+  .ctrl-btn.active { background: var(--super-probe); border-color: var(--super-probe); }
+  .ctrl-btn.icon { padding: 3px 7px; font-size: 13px; }
+
+  .status-pill {
+    background: var(--status-running); color: #1a1206;
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 999px; display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .status-pill.idle { background: var(--status-answered); color: #042417; }
+  .status-pill.empty { background: var(--status-pending); color: #fff; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .graph-wrap {
+    flex: 1; overflow: auto; padding: 10px;
+    background:
+      linear-gradient(var(--panel) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--panel) 1px, transparent 1px) 0 0/28px 100%,
+      var(--panel2);
+  }
+  svg { display: block; }
+
+  /* SUPER-ROUND bands */
+  .super-round-band {
+    rx: 12;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+  }
+  .super-round-band.r1 { fill: var(--super-round-1); stroke: var(--super-round-border-1); }
+  .super-round-band.r2 { fill: var(--super-round-2); stroke: var(--super-round-border-2); }
+  .super-round-band.r3 { fill: var(--super-round-3); stroke: var(--super-round-border-3); }
+  .super-round-label {
+    font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .super-round-label.r1 { fill: var(--root); }
+  .super-round-label.r2 { fill: var(--super-probe); }
+  .super-round-label.r3 { fill: var(--status-answered); }
+  .super-round-sublabel { font-size: 10px; fill: var(--muted); letter-spacing: .04em; }
+
+  /* SUB-ROUND bands */
+  .round-band { fill: var(--sub-round-band); rx: 8; }
+  .round-band-text { fill: var(--sub-round-text); font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .08em; }
+
+  /* nodes */
+  .node-box { cursor: pointer; }
+  .node-box rect.bg { stroke-width: 2; rx: 6; transition: opacity .25s, stroke-width .25s; }
+  .node-box:hover rect.bg { filter: brightness(1.25); }
+
+  .node-box, .edge-path, .round-band, .round-band-text,
+  .super-round-band, .super-round-label, .super-round-sublabel {
+    transition: transform .35s cubic-bezier(.4,.0,.2,1),
+                opacity .35s ease,
+                width .35s ease, height .35s ease,
+                x .35s ease, y .35s ease;
+  }
+  .edge-path { transition: d .35s ease, stroke .25s, opacity .25s; }
+
+  .node-box.root rect.bg { fill: #2d2814; stroke: var(--root); }
+  .node-box.super-probe rect.bg { fill: #1d2244; stroke: var(--super-probe); }
+  .node-box.domain.bg rect.bg { fill: #3a1f33; stroke: var(--domain-bg); }
+  .node-box.domain.cat rect.bg { fill: #1d3328; stroke: var(--domain-cat); }
+  .node-box.domain rect.bg { fill: #2a233a; stroke: #8a78c8; }
+  .node-box.sub-probe rect.bg { fill: #1a2235; stroke: #4dc8e0; }
+  .node-box.leaf rect.bg { fill: #102018; stroke: #62e0a1; stroke-dasharray: 4 2; }
+
+  .node-box.unanswered rect.bg { opacity: .55; }
+  .node-box.unanswered text.label { opacity: .7; font-style: italic; }
+  .node-box.unanswered text.qa-prefix { opacity: .8; }
+
+  .node-box.answered rect.bg { stroke-width: 2.5; }
+  .node-box.failed rect.bg { stroke: var(--status-failed); }
+  .answered-bar { fill: var(--status-answered); rx: 2; }
+  .answered-check { fill: var(--status-answered); font-size: 12px; font-weight: 900; }
+
+  .node-box text.label { fill: var(--text); font-size: 11.5px; }
+  .node-box text.tag { fill: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; }
+  .node-box text.qa-prefix { font-size: 11px; font-weight: 700; }
+  .node-box text.qa-prefix.q { fill: #ffb547; }
+  .node-box text.qa-prefix.a { fill: var(--status-answered); }
+
+  .status-dot { stroke: #0f1320; stroke-width: 1.5; transition: fill .25s; }
+  .status-dot.pending { fill: var(--status-pending); }
+  .status-dot.asked { fill: var(--status-asked); }
+  .status-dot.running { fill: var(--status-running); }
+  .status-dot.answered { fill: var(--status-answered); }
+  .status-dot.failed { fill: var(--status-failed); }
+
+  .running-glow { animation: glow 1.4s ease-in-out infinite; }
+  @keyframes glow {
+    0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 8px var(--status-running)); }
+  }
+
+  .chev { fill: var(--muted); font-size: 11px; cursor: pointer; }
+  .chev:hover { fill: var(--text); }
+
+  .edge-path { fill: none; stroke: var(--line); stroke-width: 1.5; }
+  .edge-path.asked { stroke: var(--status-asked); opacity: .7; }
+  .edge-path.running { stroke: var(--status-running); stroke-width: 2; stroke-dasharray: 4 3; animation: dash 1.2s linear infinite; }
+  .edge-path.answered { stroke: var(--status-answered); stroke-width: 1.5; opacity: .5; }
+  @keyframes dash { to { stroke-dashoffset: -14; } }
+
+  .node-box.is-new {
+    animation: appear .35s ease-out;
+    transform-origin: center;
+  }
+  @keyframes appear {
+    from { opacity: 0; transform: translate(var(--tx,0px), var(--ty,0px)) scale(.5); }
+    to   { opacity: 1; transform: translate(var(--tx,0px), var(--ty,0px)) scale(1); }
+  }
+
+  .empty-state {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: var(--muted); font-size: 13px; text-align: center;
+    padding: 40px;
+  }
+
+  #tooltip {
+    position: fixed; pointer-events: none; opacity: 0;
+    background: #0a0d18; border: 1px solid var(--super-probe);
+    padding: 10px 12px; border-radius: 6px; max-width: 360px;
+    font-size: 12px; line-height: 1.45; color: var(--text);
+    box-shadow: 0 4px 20px rgba(0,0,0,.5); z-index: 100;
+    transition: opacity .12s;
+  }
+  #tooltip .tt-meta { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  #tooltip .tt-status {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; margin-left: 6px;
+  }
+  #tooltip .tt-status.pending { background: var(--status-pending); color: #d8dcec; }
+  #tooltip .tt-status.asked { background: var(--status-asked); color: #fff; }
+  #tooltip .tt-status.running { background: var(--status-running); color: #1a1206; }
+  #tooltip .tt-status.answered { background: var(--status-answered); color: #042417; }
+  #tooltip .tt-status.failed { background: var(--status-failed); color: #fff; }
+  #tooltip .tt-q { color: #ffb547; font-weight: 700; }
+  #tooltip .tt-a { color: var(--status-answered); font-weight: 700; }
+  #tooltip .tt-answer-text { margin-top: 8px; padding: 8px; background: rgba(98,224,161,.08); border-left: 2px solid var(--status-answered); border-radius: 4px; color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h2>🕸 Live Question Graph</h2>
+    <div class="controls">
+      <button class="ctrl-btn" onclick="expandAll()" title="Expand all">⤢</button>
+      <button class="ctrl-btn" onclick="collapseAll()" title="Collapse all">⤡</button>
+      <span class="status-pill" id="status-pill"><span class="pulse"></span> Waiting…</span>
+    </div>
+  </header>
+  <div class="graph-wrap" id="graph-wrap">
+    <div class="empty-state" id="empty-state">
+      Run an investigation to see the live question graph here.
+    </div>
+    <svg id="graph" width="100" height="100" style="display:none"></svg>
+  </div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+const TREE_RAW = __TREE_JSON__;
+
+const NODE_W = 240, NODE_H = 62, V_GAP = 75, H_GAP = 16;
+const SUB_ROUND_PAD_X = 12, SUB_ROUND_PAD_TOP = 22, SUB_ROUND_PAD_BOTTOM = 8;
+const SUPER_ROUND_PAD_X = 20, SUPER_ROUND_PAD_TOP = 36, SUPER_ROUND_PAD_BOTTOM = 18;
+const SUPER_ROUND_GAP = 32;
+
+const collapsed = new Set();
+let svg = null;
+
+function linkParents(n, parent) {
+  n._parent = parent || null;
+  (n.children || []).forEach(c => linkParents(c, n));
+}
+function walk(n, fn) { fn(n); (n.children || []).forEach(c => walk(c, fn)); }
+function mk(tag, attrs) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+function ensureLayer(name) {
+  if (!document.getElementById("layer-" + name)) {
+    const g = mk("g", { id: "layer-" + name });
+    svg.appendChild(g);
+  }
+}
+function expandAll() { collapsed.clear(); render(); }
+function collapseAll() {
+  if (!TREE_RAW) return;
+  walk(TREE_RAW, n => {
+    if (n.kind !== "leaf" && n.kind !== "root" && n.kind !== "super-round"
+        && n.children && n.children.length) collapsed.add(n.id);
+  });
+  render();
+}
+
+function visibleChildren(n) {
+  if (collapsed.has(n.id)) return [];
+  return (n.children || []);
+}
+function measure(n) {
+  const kids = visibleChildren(n);
+  n._kids = kids;
+  if (!kids.length) { n._width = NODE_W; return n._width; }
+  if (n.kind === "super-round") {
+    let total = 0;
+    kids.forEach((k, i) => { measure(k); total += k._width; if (i) total += H_GAP; });
+    n._width = total + SUPER_ROUND_PAD_X * 2;
+    return n._width;
+  }
+  if (n.kind === "round") {
+    let total = 0;
+    kids.forEach((k, i) => { measure(k); total += k._width; if (i) total += H_GAP; });
+    n._width = total + SUB_ROUND_PAD_X * 2;
+    return n._width;
+  }
+  let total = 0;
+  kids.forEach((k, i) => { measure(k); total += k._width; if (i) total += H_GAP; });
+  n._width = Math.max(NODE_W, total);
+  return n._width;
+}
+function subtreeHeight(n) {
+  if (!n._kids || !n._kids.length) {
+    if (n.kind === "super-round" || n.kind === "round") return 0;
+    return NODE_H;
+  }
+  let childH = 0;
+  if (n.kind === "super-round") {
+    n._kids.forEach(k => { childH = Math.max(childH, subtreeHeight(k)); });
+    return SUPER_ROUND_PAD_TOP + childH + SUPER_ROUND_PAD_BOTTOM;
+  }
+  if (n.kind === "round") {
+    n._kids.forEach(k => { childH = Math.max(childH, subtreeHeight(k)); });
+    return SUB_ROUND_PAD_TOP + childH + SUB_ROUND_PAD_BOTTOM;
+  }
+  n._kids.forEach(k => { childH = Math.max(childH, subtreeHeight(k)); });
+  return NODE_H + V_GAP + childH;
+}
+function place(n, x, y) {
+  n._x = x; n._y = y;
+  if (n.kind === "super-round") {
+    n._bandX = x; n._bandY = y; n._bandW = n._width; n._bandH = subtreeHeight(n);
+    if (!n._kids || !n._kids.length) return;
+    let cx = x + SUPER_ROUND_PAD_X;
+    n._kids.forEach((k) => { place(k, cx, y + SUPER_ROUND_PAD_TOP); cx += k._width + H_GAP; });
+    return;
+  }
+  if (n.kind === "round") {
+    n._bandX = x; n._bandY = y; n._bandW = n._width; n._bandH = subtreeHeight(n);
+    if (!n._kids || !n._kids.length) return;
+    let cx = x + SUB_ROUND_PAD_X;
+    n._kids.forEach((k) => { place(k, cx, y + SUB_ROUND_PAD_TOP); cx += k._width + H_GAP; });
+    return;
+  }
+  n._cx = x + n._width / 2;
+  n._cy = y + NODE_H / 2;
+  n._rectX = n._cx - NODE_W / 2;
+  if (!n._kids || !n._kids.length) return;
+  const childY = y + NODE_H + V_GAP;
+  let innerW = 0;
+  n._kids.forEach((k,i)=>{ innerW += k._width; if(i) innerW += H_GAP; });
+  let cx = x + (n._width - innerW) / 2;
+  n._kids.forEach((k) => { place(k, cx, childY); cx += k._width + H_GAP; });
+}
+function placeRoot() {
+  TREE_RAW._kids = visibleChildren(TREE_RAW);
+  let maxW = NODE_W;
+  TREE_RAW._kids.forEach(k => { measure(k); maxW = Math.max(maxW, k._width); });
+  TREE_RAW._width = Math.max(NODE_W, maxW);
+  const rootX = 30;
+  TREE_RAW._x = rootX; TREE_RAW._y = 30;
+  TREE_RAW._cx = rootX + TREE_RAW._width / 2;
+  TREE_RAW._cy = TREE_RAW._y + NODE_H / 2;
+  TREE_RAW._rectX = TREE_RAW._cx - NODE_W / 2;
+  let curY = TREE_RAW._y + NODE_H + V_GAP;
+  TREE_RAW._kids.forEach((sr) => {
+    const x = rootX + (TREE_RAW._width - sr._width) / 2;
+    place(sr, x, curY);
+    curY += sr._bandH + SUPER_ROUND_GAP;
+  });
+  let maxY = TREE_RAW._y + NODE_H;
+  walk(TREE_RAW, n => {
+    if (n._y !== undefined) {
+      const h = (n.kind === "super-round" || n.kind === "round") ? n._bandH : NODE_H;
+      maxY = Math.max(maxY, n._y + h);
+    }
+  });
+  return { w: TREE_RAW._width + 60, h: maxY + 40 };
+}
+
+function render() {
+  const empty = document.getElementById("empty-state");
+  svg = document.getElementById("graph");
+
+  if (!TREE_RAW) {
+    empty.style.display = "flex";
+    svg.style.display = "none";
+    setPill("empty", "Waiting…");
+    return;
+  }
+  empty.style.display = "none";
+  svg.style.display = "block";
+
+  linkParents(TREE_RAW, null);
+  const dims = placeRoot();
+  svg.setAttribute("width", dims.w);
+  svg.setAttribute("height", dims.h);
+
+  ensureLayer("bands");
+  ensureLayer("edges");
+  ensureLayer("nodes");
+  const bandsG = document.getElementById("layer-bands");
+  const edgesG = document.getElementById("layer-edges");
+  const nodesG = document.getElementById("layer-nodes");
+
+  /* BANDS */
+  const wantedBands = new Set();
+  walk(TREE_RAW, n => {
+    if ((n.kind === "super-round" || n.kind === "round") && n._kids && n._kids.length) {
+      wantedBands.add(n.id);
+      let g = document.getElementById("band-" + n.id);
+      if (!g) { g = mk("g", { id: "band-" + n.id }); bandsG.appendChild(g); }
+      g.innerHTML = "";
+      if (n.kind === "super-round") {
+        const rIdx = ((n.round || 1) - 1) % 3 + 1;
+        g.appendChild(mk("rect", {
+          class: "super-round-band r" + rIdx,
+          x: n._bandX, y: n._bandY, width: n._bandW, height: n._bandH, rx: 12
+        }));
+        const lbl = mk("text", {
+          class: "super-round-label r" + rIdx,
+          x: n._bandX + 16, y: n._bandY + 19
+        });
+        lbl.textContent = "★ SUPER-ROUND " + (n.round || 1);
+        g.appendChild(lbl);
+        if (n.sublabel) {
+          const sub = mk("text", {
+            class: "super-round-sublabel",
+            x: n._bandX + 16, y: n._bandY + 32
+          });
+          sub.textContent = n.sublabel;
+          g.appendChild(sub);
+        }
+      } else {
+        g.appendChild(mk("rect", {
+          class: "round-band",
+          x: n._bandX, y: n._bandY, width: n._bandW, height: n._bandH, rx: 8
+        }));
+        const t = mk("text", { class: "round-band-text", x: n._bandX + 10, y: n._bandY + 14 });
+        t.textContent = "Sub-Round " + (n.round || 1);
+        g.appendChild(t);
+      }
+    }
+  });
+  Array.from(bandsG.children).forEach(c => {
+    const id = c.id.replace("band-", "");
+    if (!wantedBands.has(id)) c.remove();
+  });
+
+  /* EDGES */
+  const wantedEdges = new Set();
+  function getRenderableParent(n) {
+    let p = n._parent;
+    while (p && (p.kind === "super-round" || p.kind === "round")) p = p._parent;
+    return p;
+  }
+  walk(TREE_RAW, n => {
+    if (n.kind === "super-round" || n.kind === "round") return;
+    const p = getRenderableParent(n);
+    if (!p) return;
+    if (collapsed.has(p.id)) return;
+    const key = p.id + "->" + n.id;
+    wantedEdges.add(key);
+    let path = document.getElementById("edge-" + key);
+    const x1 = p._cx, y1 = p._y + NODE_H;
+    const x2 = n._cx, y2 = n._y;
+    const my = (y1 + y2) / 2;
+    const d = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+    if (!path) {
+      path = mk("path", { id: "edge-" + key, class: "edge-path" });
+      edgesG.appendChild(path);
+    }
+    path.setAttribute("d", d);
+    path.setAttribute("class", "edge-path " + (n.status || "pending"));
+  });
+  Array.from(edgesG.children).forEach(c => {
+    const key = c.id.replace("edge-", "");
+    if (!wantedEdges.has(key)) c.remove();
+  });
+
+  /* NODES */
+  const wantedNodes = new Set();
+  walk(TREE_RAW, n => {
+    if (n.kind === "super-round" || n.kind === "round") return;
+    // Skip nodes whose ancestor (skipping band wrappers) is collapsed
+    let anc = getRenderableParent(n);
+    while (anc) {
+      if (collapsed.has(anc.id)) return;
+      anc = getRenderableParent(anc);
+    }
+    wantedNodes.add(n.id);
+
+    let g = document.getElementById("node-" + n.id);
+    const isAnswered = n.status === "answered";
+    const isUnanswered = n.status === "pending" || n.status === "asked";
+    const isRunning = n.status === "running";
+    const isFailed = n.status === "failed";
+
+    const isNew = !g;
+    if (isNew) {
+      g = mk("g", { id: "node-" + n.id });
+      nodesG.appendChild(g);
+    }
+
+    g.setAttribute("class",
+      `node-box ${n.kind}${n.domain ? " "+n.domain : ""}` +
+      (isAnswered ? " answered" : "") +
+      (isUnanswered ? " unanswered" : "") +
+      (isRunning ? " running-glow" : "") +
+      (isFailed ? " failed" : "") +
+      (isNew ? " is-new" : "")
+    );
+    if (isNew) setTimeout(() => g.classList.remove("is-new"), 400);
+    g.setAttribute("transform", `translate(${n._rectX}, ${n._y})`);
+    g.innerHTML = "";
+    g.appendChild(mk("rect", { class: "bg", width: NODE_W, height: NODE_H, rx: 6 }));
+    if (isAnswered) g.appendChild(mk("rect", { class: "answered-bar", x: 0, y: 8, width: 3, height: NODE_H - 16 }));
+    g.appendChild(mk("circle", {
+      class: "status-dot " + (n.status || "pending"),
+      cx: NODE_W - 12, cy: 12, r: 5
+    }));
+    if (isAnswered) {
+      const ck = mk("text", { class: "answered-check", x: NODE_W - 28, y: 16, "text-anchor": "end" });
+      ck.textContent = "✓";
+      g.appendChild(ck);
+    }
+    const tag = mk("text", { class: "tag", x: 10, y: 15 });
+    tag.textContent = kindLabel(n);
+    g.appendChild(tag);
+
+    const qa = mk("text", { class: "qa-prefix " + (isAnswered ? "a" : "q"), x: 10, y: 33 });
+    qa.textContent = isAnswered ? "A:" : "Q:";
+    g.appendChild(qa);
+
+    const text = isAnswered && n.answer ? n.answer : (n.label || "");
+    const lines = wrapText(text, 30);
+    lines.slice(0, 2).forEach((line, i) => {
+      const t = mk("text", { class: "label", x: 28, y: 33 + i * 13 });
+      t.textContent = line + (i === 1 && lines.length > 2 ? "…" : "");
+      g.appendChild(t);
+    });
+
+    const realKids = (n.children || []);
+    if (realKids.length && n.kind !== "leaf") {
+      const isColl = collapsed.has(n.id);
+      const ch = mk("text", { class: "chev", x: NODE_W / 2, y: NODE_H - 5, "text-anchor": "middle" });
+      ch.textContent = isColl ? "▸ " + countDescendants(n) + " hidden" : "▾";
+      ch.addEventListener("click", e => {
+        e.stopPropagation();
+        if (collapsed.has(n.id)) collapsed.delete(n.id); else collapsed.add(n.id);
+        render();
+      });
+      g.appendChild(ch);
+    }
+    g.addEventListener("mouseenter", e => showTip(e, n));
+    g.addEventListener("mousemove", moveTip);
+    g.addEventListener("mouseleave", hideTip);
+  });
+  Array.from(nodesG.children).forEach(c => {
+    const id = c.id.replace("node-", "");
+    if (!wantedNodes.has(id)) c.remove();
+  });
+
+  /* status pill */
+  let anyRunning = false, allAnswered = true, anyFailed = false, count = 0;
+  walk(TREE_RAW, n => {
+    if (n.kind === "super-round" || n.kind === "round") return;
+    count++;
+    if (n.status === "running") anyRunning = true;
+    if (n.status === "failed") anyFailed = true;
+    if (n.status !== "answered") allAnswered = false;
+  });
+  if (count === 0) setPill("empty", "Waiting…");
+  else if (anyFailed && allAnswered) setPill("idle", "✓ Done with errors");
+  else if (anyRunning) setPill("", `<span class="pulse"></span> Live · ${count} nodes`);
+  else if (allAnswered) setPill("idle", `✓ Done · ${count} nodes`);
+  else setPill("", `<span class="pulse"></span> ${count} nodes`);
+}
+
+function setPill(cls, html) {
+  const pill = document.getElementById("status-pill");
+  pill.className = "status-pill" + (cls ? " " + cls : "");
+  pill.innerHTML = html;
+}
+
+function countDescendants(n) {
+  let c = 0;
+  walk(n, m => { if (m !== n && m.kind !== "round" && m.kind !== "super-round") c++; });
+  return c;
+}
+function kindLabel(n) {
+  switch (n.kind) {
+    case "root": return "USER QUESTION";
+    case "super-probe": return "SUPER-PROBE · " + n.id;
+    case "domain": return "DOMAIN · " + (n.domain || "");
+    case "sub-probe": return "SUB-AGENT PROBE";
+    case "leaf": return "RETRIEVAL CALL";
+  }
+  return (n.kind || "").toUpperCase();
+}
+function wrapText(text, maxChars) {
+  const words = (text || "").split(" "), lines = [];
+  let line = "";
+  for (const w of words) {
+    if ((line + " " + w).trim().length > maxChars) { lines.push(line.trim()); line = w; }
+    else line += " " + w;
+  }
+  if (line.trim()) lines.push(line.trim());
+  return lines;
+}
+const tip = document.getElementById("tooltip");
+function showTip(e, n) {
+  const isAnswered = n.status === "answered";
+  tip.innerHTML = `
+    <div class="tt-meta">${kindLabel(n)}<span class="tt-status ${n.status||'pending'}">${n.status||'pending'}</span></div>
+    <div><span class="tt-q">Q:</span> ${escapeHtml(n.label||'')}</div>
+    ${isAnswered && n.answer ? `<div class="tt-answer-text"><span class="tt-a">A:</span> ${escapeHtml(n.answer)}</div>` : ""}
+  `;
+  tip.style.opacity = 1;
+  moveTip(e);
+}
+function moveTip(e) {
+  const x = Math.min(e.clientX + 14, window.innerWidth - 380);
+  tip.style.left = x + "px";
+  tip.style.top = (e.clientY + 14) + "px";
+}
+function hideTip() { tip.style.opacity = 0; }
+function escapeHtml(s) { return (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+render();
+</script>
+</body>
+</html>

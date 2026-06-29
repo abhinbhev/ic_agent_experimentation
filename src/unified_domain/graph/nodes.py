@@ -20,6 +20,7 @@ from unified_domain.models.planner_consultant import (
     UnifiedPlannerConsultantInput,
 )
 from unified_domain.models.state import UnifiedAgentState
+from unified_domain.observability import instrumentation as obs
 from unified_domain.services.decision_consultant_service import (
     UnifiedDecisionConsultantService,
 )
@@ -46,6 +47,9 @@ def make_similar_plan_node(service: SimilarPlanService) -> NodeFn:
     """Search across all domain corpora for investigation patterns."""
 
     def node(state: UnifiedAgentState) -> dict:
+        bus = state.get("event_bus")
+        obs.emit_root(bus, state["query"])
+
         domain_context = state["available_domains"][0] if state.get("available_domains") else None
         query = SimilarPlanQuery(user_query=state["query"], domain_context=domain_context)
         result = service.search(query)
@@ -77,6 +81,18 @@ def make_planner_consultant_node(
             len(output.hypotheses),
             len(output.probe_candidates),
         )
+
+        # Observability: open a new super-round and emit its super-probes
+        bus = state.get("event_bus")
+        round_idx_1based = state.get("rounds_completed", 0) + 1
+        sublabel = (
+            f"Continued from prior round (gap: {state.get('recommended_next_gap')})"
+            if dc_output
+            else "Initial investigation"
+        )
+        obs.emit_super_round_start(bus, round_idx_1based, sublabel=sublabel)
+        obs.emit_super_probes(bus, round_idx_1based, output)
+
         return {"consultant_plan": output}
 
     return node
@@ -92,6 +108,18 @@ def make_domain_router_node(service: DomainRouterService) -> NodeFn:
         )
         output = service.run(input_data)
         logger.info("UnifiedDomainRouter: %d assignments", len(output.assignments))
+
+        # Observability: emit domain nodes for each assigned probe + mark
+        # any super-probe with at least one assignment as "running".
+        bus = state.get("event_bus")
+        obs.emit_domain_assignments(bus, output.assignments)
+        seen_super_probes = set()
+        for a in output.assignments:
+            for probe in a.probes:
+                if probe.probe_candidate_id not in seen_super_probes:
+                    obs.emit_super_probe_status(bus, probe.probe_candidate_id, "running")
+                    seen_super_probes.add(probe.probe_candidate_id)
+
         return {"domain_assignments": output.assignments}
 
     return node
@@ -101,8 +129,9 @@ def make_domain_execution_node(executor: DomainAgentExecutor) -> NodeFn:
     def node(state: UnifiedAgentState) -> dict:
         round_index = state.get("rounds_completed", 0)
         assignments = state.get("domain_assignments", [])
+        bus = state.get("event_bus")
 
-        new_entries = executor.execute_sync(assignments, round_index)
+        new_entries = executor.execute_sync(assignments, round_index, event_bus=bus)
 
         updated_ledger = state.get("evidence_ledger", []) + new_entries
         logger.info(
@@ -110,6 +139,15 @@ def make_domain_execution_node(executor: DomainAgentExecutor) -> NodeFn:
             len(new_entries),
             len(updated_ledger),
         )
+
+        # Once execution returns, mark each super-probe answered if all its
+        # domain assignments are done. Simpler: just mark them all answered;
+        # if a future round revisits the same probe id (it shouldn't — IDs
+        # are unique per consultant call), a new event will overwrite.
+        for a in assignments:
+            for probe in a.probes:
+                obs.emit_super_probe_status(bus, probe.probe_candidate_id, "answered")
+
         return {
             "evidence_ledger": updated_ledger,
             "probes_completed_this_round": len(new_entries),
@@ -155,6 +193,13 @@ def make_decision_engine_node(
             output.stop_reason,
             output.expected_incremental_value,
         )
+
+        # Close the super-round we just finished, so the next planner_consultant
+        # run opens a fresh SR{n+1}.
+        bus = state.get("event_bus")
+        round_idx_1based = state.get("rounds_completed", 0) + 1
+        obs.emit_super_round_done(bus, round_idx_1based)
+
         return {
             "decision_engine_output": output,
             "rounds_completed": state.get("rounds_completed", 0) + 1,
@@ -180,6 +225,10 @@ def make_synthesis_node(service: UnifiedSynthesizerService) -> NodeFn:
             )
         )
         logger.info("UnifiedSynthesizer: confidence=%.2f", output.confidence)
+
+        bus = state.get("event_bus")
+        obs.emit_root_answered(bus, output.markdown)
+
         return {"final_answer": output}
 
     return node

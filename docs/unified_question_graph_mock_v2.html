@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Unified Agent — Live Question Graph v2 (Mock)</title>
+<style>
+  :root {
+    --bg: #0f1320;
+    --panel: #171c2e;
+    --panel2: #1d2238;
+    --text: #e8eaf2;
+    --muted: #9aa3bd;
+    --line: #3a4262;
+
+    --root: #ffd166;
+    --super-probe: #5b6cf0;
+    --domain-bg: #c84cb1;
+    --domain-cat: #2fa86b;
+    --round-band: rgba(91,108,240,.06);
+    --round-band-2: rgba(200,76,177,.05);
+
+    --status-pending: #5a6380;
+    --status-asked: #6f7ba0;
+    --status-running: #ffb547;
+    --status-answered: #62e0a1;
+    --status-failed: #ff6b7d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .app { display: grid; grid-template-columns: 1fr 600px; height: 100vh; }
+
+  /* LEFT — placeholder */
+  .left { padding: 24px; overflow-y: auto; border-right: 1px solid #2a3050; }
+  .left h1 { margin: 0 0 4px; font-size: 20px; }
+  .left .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  .left .stream-item {
+    background: var(--panel); border: 1px solid #2a3050;
+    border-left: 3px solid var(--super-probe);
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px;
+  }
+  .left .stream-item .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+  .left .stream-item.done { border-left-color: var(--status-answered); }
+  .left .stream-item.running { border-left-color: var(--status-running); }
+  .placeholder-note {
+    margin-top: 30px; padding: 14px; background: rgba(91,108,240,.08);
+    border: 1px dashed var(--super-probe); border-radius: 8px;
+    font-size: 13px; color: var(--muted);
+  }
+
+  /* RIGHT */
+  .right { display: flex; flex-direction: column; background: var(--panel); height: 100vh; }
+  .right header {
+    padding: 14px 16px; border-bottom: 1px solid #2a3050;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .right h2 { margin: 0; font-size: 15px; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .ctrl-btn {
+    background: var(--panel2); border: 1px solid #2a3050; color: var(--text);
+    border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .ctrl-btn:hover { background: #232a4a; }
+  .ctrl-btn.active { background: var(--super-probe); border-color: var(--super-probe); }
+  .status-pill {
+    background: var(--status-running); color: #1a1206;
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 999px; display: flex; align-items: center; gap: 6px;
+  }
+  .status-pill.idle { background: var(--status-answered); color: #042417; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .graph-wrap {
+    flex: 1; overflow: auto; padding: 12px;
+    background:
+      linear-gradient(var(--panel) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--panel) 1px, transparent 1px) 0 0/28px 100%,
+      var(--panel2);
+  }
+  svg { display: block; }
+
+  /* round bands (drawn as svg rects behind nodes) */
+  .round-band { fill: var(--round-band); rx: 8; }
+  .round-band-text { fill: var(--super-probe); font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .08em; opacity: .7; }
+
+  /* nodes */
+  .node-box { cursor: pointer; transition: filter .12s; }
+  .node-box:hover { filter: brightness(1.25); }
+  .node-box rect.bg { stroke-width: 2; rx: 6; }
+
+  /* per-kind background */
+  .node-box.root rect.bg { fill: #2d2814; stroke: var(--root); }
+  .node-box.super-probe rect.bg { fill: #1d2244; stroke: var(--super-probe); }
+  .node-box.domain.brand_guidance rect.bg { fill: #3a1f33; stroke: var(--domain-bg); }
+  .node-box.domain.category rect.bg { fill: #1d3328; stroke: var(--domain-cat); }
+  .node-box.sub-probe rect.bg { fill: #1a2235; stroke: #4dc8e0; }
+  .node-box.leaf rect.bg { fill: #102018; stroke: #62e0a1; stroke-dasharray: 4 2; }
+
+  /* unanswered = lower opacity, italic label */
+  .node-box.unanswered rect.bg { opacity: .55; }
+  .node-box.unanswered text.label { opacity: .7; font-style: italic; }
+  .node-box.unanswered text.qa-prefix { opacity: .8; }
+
+  /* answered = thick left bar */
+  .node-box.answered rect.bg { stroke-width: 2.5; }
+  .node-box.answered::after { /* not used in svg, kept for parity */ }
+
+  .answered-bar { fill: var(--status-answered); rx: 2; }
+  .answered-check { fill: var(--status-answered); font-size: 12px; font-weight: 900; }
+
+  .node-box text.label { fill: var(--text); font-size: 11.5px; }
+  .node-box text.tag { fill: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; }
+  .node-box text.qa-prefix { font-size: 11px; font-weight: 700; }
+  .node-box text.qa-prefix.q { fill: #ffb547; }
+  .node-box text.qa-prefix.a { fill: var(--status-answered); }
+
+  /* status dot */
+  .status-dot { stroke: #0f1320; stroke-width: 1.5; }
+  .status-dot.pending { fill: var(--status-pending); }
+  .status-dot.asked { fill: var(--status-asked); }
+  .status-dot.running { fill: var(--status-running); }
+  .status-dot.answered { fill: var(--status-answered); }
+  .status-dot.failed { fill: var(--status-failed); }
+
+  .running-glow { animation: glow 1.4s ease-in-out infinite; }
+  @keyframes glow {
+    0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 8px var(--status-running)); }
+  }
+
+  /* collapse chevron */
+  .chev { fill: var(--muted); font-size: 11px; cursor: pointer; }
+  .chev:hover { fill: var(--text); }
+
+  /* edges */
+  .edge { fill: none; stroke: var(--line); stroke-width: 1.5; }
+  .edge.asked { stroke: var(--status-asked); opacity: .7; }
+  .edge.running { stroke: var(--status-running); stroke-width: 2; stroke-dasharray: 4 3; animation: dash 1.2s linear infinite; }
+  .edge.answered { stroke: var(--status-answered); stroke-width: 1.5; opacity: .5; }
+  @keyframes dash { to { stroke-dashoffset: -14; } }
+
+  /* node appearance animation */
+  .node-box.appear {
+    animation: appear .35s ease-out;
+    transform-origin: center;
+  }
+  @keyframes appear {
+    from { opacity: 0; transform: scale(.6); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* legend */
+  .legend {
+    border-top: 1px solid #2a3050; padding: 10px 16px;
+    display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px; background: var(--panel);
+  }
+  .legend .item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .swatch { width: 12px; height: 10px; border-radius: 3px; border: 2px solid; }
+  .sw-root { background: #2d2814; border-color: var(--root); }
+  .sw-super { background: #1d2244; border-color: var(--super-probe); }
+  .sw-bg { background: #3a1f33; border-color: var(--domain-bg); }
+  .sw-cat { background: #1d3328; border-color: var(--domain-cat); }
+  .sw-sub { background: #1a2235; border-color: #4dc8e0; }
+  .sw-leaf { background: #102018; border-color: #62e0a1; border-style: dashed; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .dot.asked { background: var(--status-asked); }
+  .dot.running { background: var(--status-running); }
+  .dot.answered { background: var(--status-answered); }
+
+  /* tooltip */
+  #tooltip {
+    position: fixed; pointer-events: none; opacity: 0;
+    background: #0a0d18; border: 1px solid var(--super-probe);
+    padding: 10px 12px; border-radius: 6px; max-width: 360px;
+    font-size: 12px; line-height: 1.45; color: var(--text);
+    box-shadow: 0 4px 20px rgba(0,0,0,.5); z-index: 100;
+    transition: opacity .12s;
+  }
+  #tooltip .tt-meta { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  #tooltip .tt-status {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; margin-left: 6px;
+  }
+  #tooltip .tt-status.pending { background: var(--status-pending); color: #d8dcec; }
+  #tooltip .tt-status.asked { background: var(--status-asked); color: #fff; }
+  #tooltip .tt-status.running { background: var(--status-running); color: #1a1206; }
+  #tooltip .tt-status.answered { background: var(--status-answered); color: #042417; }
+  #tooltip .tt-q { color: #ffb547; font-weight: 700; }
+  #tooltip .tt-a { color: var(--status-answered); font-weight: 700; }
+  #tooltip .tt-answer-text { margin-top: 8px; padding: 8px; background: rgba(98,224,161,.08); border-left: 2px solid var(--status-answered); border-radius: 4px; color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- LEFT placeholder -->
+  <div class="left">
+    <h1>Unified Domain Analysis</h1>
+    <p class="subtitle">Cross-domain investigation — mock view v2</p>
+
+    <div class="stream-item done">
+      <div class="meta">User question</div>
+      How did Brahma perform in Brazil in Q1 2026 across perception and consumption?
+    </div>
+    <div class="stream-item done">
+      <div class="meta">Unified Planner Consultant — Round 1</div>
+      3 hypotheses + 3 super-probes drafted (brand strength, consumption, perception↔consumption link).
+    </div>
+    <div class="stream-item done">
+      <div class="meta">Domain Router — Round 1</div>
+      Routed P1 → brand_guidance · P2 → category · P3 → both (multi-domain probe).
+    </div>
+    <div class="stream-item running">
+      <div class="meta">Domain Agent Executor — sub-agents running in parallel</div>
+      bg/P1 done · cat/P2 round 2 running · bg/P3 round 1 finishing · cat/P3 still pending dispatch.
+    </div>
+
+    <div class="placeholder-note">
+      ← Existing Streamlit stream lives here. Watch the right panel ⟶
+      to see every question and sub-question light up live.
+      <br><br>
+      <b>Try:</b> click ▶▶ Auto to watch the tree grow from the user question
+      all the way down through every sub-agent round.
+    </div>
+  </div>
+
+  <!-- RIGHT — graph -->
+  <div class="right">
+    <header>
+      <h2>🕸 Live Question Graph</h2>
+      <div class="controls">
+        <button class="ctrl-btn" onclick="setStep(0)">⏮</button>
+        <button class="ctrl-btn" onclick="setStep(Math.max(0, currentStep-1))">◀</button>
+        <button class="ctrl-btn" onclick="setStep(Math.min(STEPS.length-1, currentStep+1))">▶</button>
+        <button class="ctrl-btn" id="autobtn" onclick="autoplay()">▶▶ Auto</button>
+        <button class="ctrl-btn" onclick="expandAll()">⤢ Expand</button>
+        <button class="ctrl-btn" onclick="collapseAll()">⤡ Collapse</button>
+        <span class="status-pill" id="status-pill"><span class="pulse"></span> Live</span>
+      </div>
+    </header>
+
+    <div class="graph-wrap">
+      <svg id="graph" width="1600" height="1200"></svg>
+    </div>
+
+    <div class="legend">
+      <div class="item"><span class="swatch sw-root"></span> User question</div>
+      <div class="item"><span class="swatch sw-super"></span> Super-probe</div>
+      <div class="item"><span class="swatch sw-bg"></span> brand_guidance</div>
+      <div class="item"><span class="swatch sw-cat"></span> category</div>
+      <div class="item"><span class="swatch sw-sub"></span> Sub-agent probe</div>
+      <div class="item"><span class="swatch sw-leaf"></span> Retrieval call</div>
+      <div class="item" style="margin-left:auto"><span class="dot asked"></span> asked</div>
+      <div class="item"><span class="dot running"></span> running</div>
+      <div class="item"><span class="dot answered"></span> answered ✓</div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+/* ============================================================
+ *  MOCK QUESTION TREE
+ *  All branches covered. Sub-agents nested by round.
+ *  Each node carries: id, kind, label (the question), status,
+ *  optional answer (for answered nodes), and children.
+ *  Tiers:
+ *    0 root
+ *    1 super-probe (one per Planner Consultant probe)
+ *    2 domain (one per Domain Router assignment)
+ *    3 round-group (visual band; not a real node)
+ *    3 sub-probe (inside sub-agent)
+ *    4 retrieval (single-agent's data-fetch question)
+ * ============================================================ */
+
+const TREE = {
+  id: "root", kind: "root",
+  label: "How did Brahma perform in Brazil in Q1 2026 across perception and consumption?",
+  status: "answered",
+  answer: "Brahma's brand strength held steady but consumption softened — see synthesis.",
+  children: [
+    /* ---------------- P1 ---------------- */
+    {
+      id: "P1", kind: "super-probe",
+      label: "Has Brahma's brand strength shifted in Brazil this quarter?",
+      status: "answered",
+      answer: "Power flat at 12.4 (vs 12.6 Q4); meaningful +0.2, salience -0.4.",
+      children: [
+        {
+          id: "P1-bg", kind: "domain", domain: "brand_guidance",
+          label: "What is Brahma's brand strength and key equity drivers in Brazil in Q1 2026 vs prior periods?",
+          status: "answered",
+          answer: "Power steady; salience the only soft driver.",
+          children: [
+            {
+              id: "P1-bg-R1", kind: "round", round: 1, status: "answered",
+              children: [
+                { id: "P1-bg-R1-s1", kind: "sub-probe",
+                  label: "How did Brahma's overall brand power change vs prior quarters?",
+                  status: "answered",
+                  answer: "Power = 12.4 (Q1 26) vs 12.6 (Q4 25) vs 12.5 (Q1 25) — essentially flat.",
+                  children: [
+                    { id: "P1-bg-R1-s1-r1", kind: "leaf",
+                      label: "What is the power of Brahma in Brazil in Q1 2026, Q4 2025, Q1 2025?",
+                      status: "answered",
+                      answer: "12.4 / 12.6 / 12.5" }
+                  ]
+                }
+              ]
+            },
+            {
+              id: "P1-bg-R2", kind: "round", round: 2, status: "answered",
+              children: [
+                { id: "P1-bg-R2-s1", kind: "sub-probe",
+                  label: "Which equity drivers explain the movement (meaningful / difference / salience)?",
+                  status: "answered",
+                  answer: "Meaningful +0.2, difference flat, salience -0.4 (driver of softness).",
+                  children: [
+                    { id: "P1-bg-R2-s1-r1", kind: "leaf",
+                      label: "What are meaningful, difference, salience for Brahma in Brazil in Q1 2026 and Q4 2025?",
+                      status: "answered",
+                      answer: "Multi-KPI fetch — see Data block." }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+
+    /* ---------------- P2 ---------------- */
+    {
+      id: "P2", kind: "super-probe",
+      label: "Are consumers actually drinking Brahma more or less in Brazil this quarter?",
+      status: "running",
+      children: [
+        {
+          id: "P2-cat", kind: "domain", domain: "category",
+          label: "What are Brahma's consumption trends in Brazil for Q1 2026 vs prior quarters?",
+          status: "running",
+          children: [
+            {
+              id: "P2-cat-R1", kind: "round", round: 1, status: "answered",
+              children: [
+                { id: "P2-cat-R1-s1", kind: "sub-probe",
+                  label: "How has past-7-day Brahma consumption changed in Brazil?",
+                  status: "answered",
+                  answer: "P7D consumption -1.8pp vs Q4 25.",
+                  children: [
+                    { id: "P2-cat-R1-s1-r1", kind: "leaf",
+                      label: "What is consumption_past_seven_days for Brahma in Brazil in Q1 2026 and Q4 2025?",
+                      status: "answered",
+                      answer: "34.2% / 36.0%" }
+                  ]
+                }
+              ]
+            },
+            {
+              id: "P2-cat-R2", kind: "round", round: 2, status: "running",
+              children: [
+                { id: "P2-cat-R2-s1", kind: "sub-probe",
+                  label: "Has 4-week consumption moved similarly, or is the dip only recent?",
+                  status: "answered",
+                  answer: "P4W also softer (-1.2pp); consistent direction.",
+                  children: [
+                    { id: "P2-cat-R2-s1-r1", kind: "leaf",
+                      label: "What is consumption_past_four_weeks for Brahma in Brazil in Q1 2026, Q4 2025?",
+                      status: "answered",
+                      answer: "48.1% / 49.3%" }
+                  ]
+                },
+                { id: "P2-cat-R2-s2", kind: "sub-probe",
+                  label: "Is the softness uniform or concentrated in specific cohorts?",
+                  status: "running",
+                  children: [
+                    { id: "P2-cat-R2-s2-r1", kind: "leaf",
+                      label: "What is consumption_past_four_weeks for Brahma in Brazil in Q1 2026 by age cohort and gender?",
+                      status: "running" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+
+    /* ---------------- P3 ---------------- */
+    {
+      id: "P3", kind: "super-probe",
+      label: "Is perception strength translating into consumption, or are they diverging?",
+      status: "running",
+      children: [
+        {
+          id: "P3-bg", kind: "domain", domain: "brand_guidance",
+          label: "What is Brahma's awareness and consideration in Brazil in Q1 2026 across age cohorts?",
+          status: "running",
+          children: [
+            {
+              id: "P3-bg-R1", kind: "round", round: 1, status: "running",
+              children: [
+                { id: "P3-bg-R1-s1", kind: "sub-probe",
+                  label: "Which age cohorts show the strongest awareness shift?",
+                  status: "answered",
+                  answer: "18-24 awareness -2.1pp; 35+ stable.",
+                  children: [
+                    { id: "P3-bg-R1-s1-r1", kind: "leaf",
+                      label: "What is awareness for Brahma in Brazil in Q1 2026 by age cohort?",
+                      status: "answered",
+                      answer: "18-24: 78%, 25-34: 84%, 35+: 88%" }
+                  ]
+                },
+                { id: "P3-bg-R1-s2", kind: "sub-probe",
+                  label: "Does the 18-24 awareness softness show up in consideration too?",
+                  status: "running",
+                  children: [
+                    { id: "P3-bg-R1-s2-r1", kind: "leaf",
+                      label: "What is consideration for Brahma in Brazil in Q1 2026 by age cohort?",
+                      status: "running" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: "P3-cat", kind: "domain", domain: "category",
+          label: "What are Brahma's consumption patterns in Brazil in Q1 2026 by age cohort?",
+          status: "asked",
+          children: [
+            {
+              id: "P3-cat-R1", kind: "round", round: 1, status: "asked",
+              children: [
+                { id: "P3-cat-R1-s1", kind: "sub-probe",
+                  label: "Does consumption track awareness across cohorts?",
+                  status: "asked",
+                  children: [
+                    { id: "P3-cat-R1-s1-r1", kind: "leaf",
+                      label: "What is consumption_past_four_weeks for Brahma in Brazil in Q1 2026 by age cohort?",
+                      status: "asked" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+/* ============================================================
+ *  STEP SNAPSHOTS — drive the autoplay / scrub.
+ *  Each step lists (a) which nodes are "visible" (have been
+ *  asked at least once) and (b) any status overrides.
+ *  Nodes not in `visible` are hidden until their step.
+ * ============================================================ */
+const allIds = [];
+function collectIds(n) { allIds.push(n.id); (n.children||[]).forEach(collectIds); }
+collectIds(TREE);
+
+const STEPS = [
+  { name: "Question received",
+    visible: ["root"],
+    statuses: { root: "asked" } },
+
+  { name: "Planner Consultant drafts super-probes",
+    visible: ["root","P1","P2","P3"],
+    statuses: { root: "answered", P1: "asked", P2: "asked", P3: "asked" } },
+
+  { name: "Domain Router assigns probes to sub-domains",
+    visible: ["root","P1","P2","P3","P1-bg","P2-cat","P3-bg","P3-cat"],
+    statuses: { "P1-bg": "asked", "P2-cat": "asked", "P3-bg": "asked", "P3-cat": "asked" } },
+
+  { name: "Sub-agents start in parallel — round 1 of each",
+    visible: ["root","P1","P2","P3","P1-bg","P2-cat","P3-bg","P3-cat",
+              "P1-bg-R1","P1-bg-R1-s1","P1-bg-R1-s1-r1",
+              "P2-cat-R1","P2-cat-R1-s1","P2-cat-R1-s1-r1",
+              "P3-bg-R1","P3-bg-R1-s1","P3-bg-R1-s1-r1"],
+    statuses: { "P1-bg": "running", "P2-cat": "running", "P3-bg": "running",
+                P1: "running", P2: "running", P3: "running",
+                "P1-bg-R1": "running", "P2-cat-R1": "running", "P3-bg-R1": "running",
+                "P1-bg-R1-s1": "running", "P2-cat-R1-s1": "running", "P3-bg-R1-s1": "running",
+                "P1-bg-R1-s1-r1": "running", "P2-cat-R1-s1-r1": "running", "P3-bg-R1-s1-r1": "running" } },
+
+  { name: "Round 1 retrievals come back — leaves answered",
+    visible: null,  // additive — keep prior visible
+    statuses: { "P1-bg-R1-s1": "answered", "P1-bg-R1-s1-r1": "answered",
+                "P2-cat-R1-s1": "answered", "P2-cat-R1-s1-r1": "answered",
+                "P3-bg-R1-s1": "answered", "P3-bg-R1-s1-r1": "answered",
+                "P1-bg-R1": "answered", "P2-cat-R1": "answered" } },
+
+  { name: "bg/P1 finishes round 2 (drivers) — domain answered",
+    addVisible: ["P1-bg-R2","P1-bg-R2-s1","P1-bg-R2-s1-r1"],
+    statuses: { "P1-bg-R2": "answered", "P1-bg-R2-s1": "answered",
+                "P1-bg-R2-s1-r1": "answered",
+                "P1-bg": "answered", P1: "answered" } },
+
+  { name: "cat/P2 round 2 dispatches (4-week + cohort split)",
+    addVisible: ["P2-cat-R2","P2-cat-R2-s1","P2-cat-R2-s1-r1",
+                 "P2-cat-R2-s2","P2-cat-R2-s2-r1"],
+    statuses: { "P2-cat-R2": "running",
+                "P2-cat-R2-s1": "running", "P2-cat-R2-s1-r1": "running",
+                "P2-cat-R2-s2": "running", "P2-cat-R2-s2-r1": "running" } },
+
+  { name: "bg/P3 launches second sub-probe (consideration)",
+    addVisible: ["P3-bg-R1-s2","P3-bg-R1-s2-r1"],
+    statuses: { "P3-bg-R1-s2": "running", "P3-bg-R1-s2-r1": "running" } },
+
+  { name: "cat/P2 R2 first probe lands; second still running",
+    addVisible: [],
+    statuses: { "P2-cat-R2-s1": "answered", "P2-cat-R2-s1-r1": "answered" } },
+
+  { name: "Current live state — cat/P3 still pending dispatch",
+    addVisible: ["P3-cat-R1","P3-cat-R1-s1","P3-cat-R1-s1-r1"],
+    statuses: {} }, // uses tree defaults from here
+];
+
+function computeVisibleSet(stepIdx) {
+  const v = new Set();
+  for (let i = 0; i <= stepIdx; i++) {
+    const s = STEPS[i];
+    if (s.visible) s.visible.forEach(id => v.add(id));
+    if (s.addVisible) s.addVisible.forEach(id => v.add(id));
+  }
+  /* always make sure ancestors of any visible node are also visible */
+  walk(TREE, n => {
+    if (v.has(n.id) && n._parent) {
+      let p = n._parent;
+      while (p) { v.add(p.id); p = p._parent; }
+    }
+  });
+  return v;
+}
+function computeStatuses(stepIdx) {
+  const status = {};
+  walk(TREE, n => status[n.id] = n.status);
+  for (let i = 0; i <= stepIdx; i++) Object.assign(status, STEPS[i].statuses || {});
+  return status;
+}
+
+/* parent pointers */
+function linkParents(n, parent) {
+  n._parent = parent || null;
+  (n.children || []).forEach(c => linkParents(c, n));
+}
+linkParents(TREE, null);
+
+function walk(n, fn) { fn(n); (n.children || []).forEach(c => walk(c, fn)); }
+
+/* ============================================================
+ *  COLLAPSE STATE — node ids that are collapsed (children hidden)
+ * ============================================================ */
+const collapsed = new Set();
+
+function expandAll() { collapsed.clear(); render(); }
+function collapseAll() {
+  walk(TREE, n => { if (n.kind !== "leaf" && n.children && n.children.length) collapsed.add(n.id); });
+  collapsed.delete(TREE.id);
+  render();
+}
+
+/* ============================================================
+ *  LAYOUT — recursive top-down. Each node knows its subtree width
+ *  so siblings can be packed without overlap. Round-groups are
+ *  rendered as a band behind their children with a label on the side.
+ * ============================================================ */
+const NODE_W = 240, NODE_H = 60, V_GAP = 80, H_GAP = 16, ROUND_PAD = 14;
+
+function visibleChildren(n, visSet) {
+  if (collapsed.has(n.id)) return [];
+  return (n.children || []).filter(c => visSet.has(c.id));
+}
+
+function measure(n, visSet) {
+  const kids = visibleChildren(n, visSet);
+  if (n.kind === "round") {
+    /* round group: children laid out horizontally, with padding around */
+    if (!kids.length) { n._width = NODE_W; n._kids = []; return n._width; }
+    let total = 0;
+    kids.forEach((k, i) => { measure(k, visSet); total += k._width; if (i) total += H_GAP; });
+    n._width = total + ROUND_PAD * 2;
+    n._kids = kids;
+    return n._width;
+  }
+  if (!kids.length) { n._width = NODE_W; n._kids = []; return n._width; }
+  let total = 0;
+  kids.forEach((k, i) => { measure(k, visSet); total += k._width; if (i) total += H_GAP; });
+  n._width = Math.max(NODE_W, total);
+  n._kids = kids;
+  return n._width;
+}
+
+function place(n, x, y) {
+  /* n is centered at (x + n._width/2). The node itself is NODE_W wide. */
+  n._cx = x + n._width / 2;
+  n._cy = y + NODE_H / 2;
+  n._x  = n._cx - NODE_W / 2;
+  n._y  = y;
+
+  if (!n._kids || !n._kids.length) return;
+
+  if (n.kind === "round") {
+    /* place children horizontally inside the band */
+    let cx = x + ROUND_PAD;
+    const childY = y;  // round groups render in-line with their children's tier
+    n._kids.forEach((k, i) => {
+      place(k, cx, childY);
+      cx += k._width + H_GAP;
+    });
+    /* round band metrics */
+    n._bandX = x;
+    n._bandY = y - 6;
+    n._bandW = n._width;
+    /* band height = max child subtree height — computed during render */
+    return;
+  }
+
+  /* normal node: children below */
+  const childY = y + NODE_H + V_GAP;
+  let cx = x + (n._width - childrenInnerWidth(n._kids)) / 2;
+  n._kids.forEach((k, i) => {
+    place(k, cx, childY);
+    cx += k._width + H_GAP;
+  });
+}
+function childrenInnerWidth(kids) {
+  let t = 0;
+  kids.forEach((k, i) => { t += k._width; if (i) t += H_GAP; });
+  return t;
+}
+
+/* compute deepest y for sizing */
+function maxY(n) {
+  let m = n._y + NODE_H;
+  (n._kids || []).forEach(k => { m = Math.max(m, maxY(k)); });
+  return m;
+}
+
+/* ============================================================
+ *  RENDER
+ * ============================================================ */
+let currentStep = STEPS.length - 1;
+
+function render() {
+  const visSet = computeVisibleSet(currentStep);
+  const status = computeStatuses(currentStep);
+
+  walk(TREE, n => { n._effectiveStatus = status[n.id] || "pending"; });
+
+  measure(TREE, visSet);
+  place(TREE, 30, 30);
+
+  const svgW = Math.max(TREE._width + 80, 1200);
+  const svgH = maxY(TREE) + 60;
+
+  const svg = document.getElementById("graph");
+  svg.setAttribute("width", svgW);
+  svg.setAttribute("height", svgH);
+  svg.innerHTML = "";
+
+  /* round bands first (behind everything) */
+  walk(TREE, n => {
+    if (n.kind === "round" && visSet.has(n.id) && n._kids && n._kids.length) {
+      const bh = maxY(n) - n._bandY + 8;
+      const r = mk("rect", { class: "round-band", x: n._bandX, y: n._bandY, width: n._bandW, height: bh });
+      svg.appendChild(r);
+      const t = mk("text", { class: "round-band-text", x: n._bandX + 8, y: n._bandY + 14 });
+      t.textContent = "Round " + n.round;
+      svg.appendChild(t);
+    }
+  });
+
+  /* edges */
+  function drawEdges(n) {
+    if (!n._kids) return;
+    n._kids.forEach(c => {
+      if (c.kind === "round") {
+        /* edge from parent to each child of the round (skip the round node visually) */
+        c._kids.forEach(gc => drawEdge(n, gc, c._effectiveStatus));
+        drawEdges(c);
+      } else {
+        drawEdge(n, c, c._effectiveStatus);
+        drawEdges(c);
+      }
+    });
+  }
+  function drawEdge(a, b, status) {
+    const x1 = a._cx, y1 = a._y + NODE_H;
+    const x2 = b._cx, y2 = b._y;
+    const my = (y1 + y2) / 2;
+    const d = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+    const p = mk("path", { d, class: "edge " + (status || "pending") });
+    svg.appendChild(p);
+  }
+  drawEdges(TREE);
+
+  /* nodes (skip round groups — they're just bands) */
+  walk(TREE, n => {
+    if (!visSet.has(n.id) || n.kind === "round") return;
+    const isAnswered = n._effectiveStatus === "answered";
+    const isUnanswered = n._effectiveStatus === "pending" || n._effectiveStatus === "asked";
+
+    const g = mk("g", {
+      class: `node-box ${n.kind}${n.domain ? " "+n.domain : ""}` +
+             (isAnswered ? " answered" : "") +
+             (isUnanswered ? " unanswered" : "") +
+             (n._effectiveStatus === "running" ? " running-glow" : "") +
+             " appear",
+      transform: `translate(${n._x}, ${n._y})`
+    });
+
+    /* background */
+    g.appendChild(mk("rect", { class: "bg", width: NODE_W, height: NODE_H, rx: 6 }));
+
+    /* left "answered" bar */
+    if (isAnswered) {
+      g.appendChild(mk("rect", { class: "answered-bar", x: 0, y: 6, width: 3, height: NODE_H - 12 }));
+    }
+
+    /* status dot */
+    const dot = mk("circle", { class: "status-dot " + n._effectiveStatus,
+      cx: NODE_W - 12, cy: 12, r: 5 });
+    g.appendChild(dot);
+
+    /* checkmark for answered */
+    if (isAnswered) {
+      const ck = mk("text", { class: "answered-check", x: NODE_W - 28, y: 16, "text-anchor": "end" });
+      ck.textContent = "✓";
+      g.appendChild(ck);
+    }
+
+    /* kind tag */
+    const tag = mk("text", { class: "tag", x: 10, y: 15 });
+    tag.textContent = kindLabel(n);
+    g.appendChild(tag);
+
+    /* Q: / A: prefix */
+    const qa = mk("text", { class: "qa-prefix " + (isAnswered ? "a" : "q"), x: 10, y: 33 });
+    qa.textContent = isAnswered ? "A:" : "Q:";
+    g.appendChild(qa);
+
+    /* label (wrap to 2 lines) */
+    const text = isAnswered && n.answer ? n.answer : n.label;
+    const lines = wrapText(text, 30);
+    lines.slice(0, 2).forEach((line, i) => {
+      const t = mk("text", { class: "label", x: 28, y: 33 + i * 13 });
+      t.textContent = line + (i === 1 && lines.length > 2 ? "…" : "");
+      g.appendChild(t);
+    });
+
+    /* collapse chevron — only on parents with children */
+    const realKids = (n.children || []).filter(c => visSet.has(c.id) || c.kind === "round");
+    if (realKids.length && n.kind !== "leaf") {
+      const isColl = collapsed.has(n.id);
+      const ch = mk("text", { class: "chev", x: NODE_W / 2, y: NODE_H - 4, "text-anchor": "middle" });
+      ch.textContent = isColl ? "▸ " + countDescendants(n) + " hidden" : "▾";
+      ch.addEventListener("click", e => {
+        e.stopPropagation();
+        if (collapsed.has(n.id)) collapsed.delete(n.id); else collapsed.add(n.id);
+        render();
+      });
+      g.appendChild(ch);
+    }
+
+    /* tooltip */
+    g.addEventListener("mouseenter", e => showTip(e, n));
+    g.addEventListener("mousemove", moveTip);
+    g.addEventListener("mouseleave", hideTip);
+
+    svg.appendChild(g);
+  });
+
+  /* status pill */
+  const pill = document.getElementById("status-pill");
+  const isLast = currentStep === STEPS.length - 1;
+  const anyRunning = Object.values(status).includes("running");
+  if (anyRunning) {
+    pill.className = "status-pill";
+    pill.innerHTML = `<span class="pulse"></span> Live · ${STEPS[currentStep].name}`;
+  } else {
+    pill.className = "status-pill idle";
+    pill.innerHTML = `✓ ${STEPS[currentStep].name}`;
+  }
+}
+
+function countDescendants(n) {
+  let c = 0;
+  walk(n, m => { if (m !== n && m.kind !== "round") c++; });
+  return c;
+}
+
+function kindLabel(n) {
+  switch (n.kind) {
+    case "root": return "USER QUESTION";
+    case "super-probe": return "SUPER-PROBE · " + n.id;
+    case "domain": return "DOMAIN · " + n.domain;
+    case "sub-probe": return "SUB-AGENT PROBE";
+    case "leaf": return "RETRIEVAL CALL";
+  }
+}
+
+function wrapText(text, maxChars) {
+  const words = text.split(" "), lines = [];
+  let line = "";
+  for (const w of words) {
+    if ((line + " " + w).trim().length > maxChars) { lines.push(line.trim()); line = w; }
+    else line += " " + w;
+  }
+  if (line.trim()) lines.push(line.trim());
+  return lines;
+}
+
+function mk(tag, attrs) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+const tip = document.getElementById("tooltip");
+function showTip(e, n) {
+  const isAnswered = n._effectiveStatus === "answered";
+  tip.innerHTML = `
+    <div class="tt-meta">${kindLabel(n)}<span class="tt-status ${n._effectiveStatus}">${n._effectiveStatus}</span></div>
+    <div><span class="tt-q">Q:</span> ${escapeHtml(n.label)}</div>
+    ${isAnswered && n.answer ? `<div class="tt-answer-text"><span class="tt-a">A:</span> ${escapeHtml(n.answer)}</div>` : ""}
+  `;
+  tip.style.opacity = 1;
+  moveTip(e);
+}
+function moveTip(e) {
+  const x = Math.min(e.clientX + 14, window.innerWidth - 380);
+  tip.style.left = x + "px";
+  tip.style.top = (e.clientY + 14) + "px";
+}
+function hideTip() { tip.style.opacity = 0; }
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function setStep(i) { currentStep = i; render(); }
+let autoTimer = null;
+function autoplay() {
+  const btn = document.getElementById("autobtn");
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; btn.classList.remove("active"); return; }
+  btn.classList.add("active");
+  currentStep = 0; render();
+  autoTimer = setInterval(() => {
+    if (currentStep >= STEPS.length - 1) { clearInterval(autoTimer); autoTimer = null; btn.classList.remove("active"); return; }
+    currentStep++;
+    render();
+  }, 1500);
+}
+
+render();
+</script>
+</body>
+</html>
