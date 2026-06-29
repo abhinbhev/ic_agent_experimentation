@@ -37,6 +37,14 @@ with st.sidebar:
     query = st.text_area(
         "Business question", "Why did revenue decline in East China during Q1?", height=120
     )
+    mock_retrieval = st.checkbox(
+        "🧪 Mock retrieval",
+        value=False,
+        help=(
+            "If on, the retrieval layer returns canned 'Mock answer to: …' "
+            "strings instead of calling the real backend."
+        ),
+    )
     run = st.button("Run", type="primary", use_container_width=True)
 
 
@@ -133,7 +141,10 @@ def render_step(node_name: str, update: dict) -> None:
 
 if run:
     domain_config = load_domain_config(domain_id, base_dir=settings.domain_config_dir)
-    app = build_app(domain_config, settings)
+    run_settings = (
+        settings.model_copy(update={"retrieval_mode": "mock"}) if mock_retrieval else settings
+    )
+    app = build_app(domain_config, run_settings)
 
     initial_state: AgentState = {
         "query": query,

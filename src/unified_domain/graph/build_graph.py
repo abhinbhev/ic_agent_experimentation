@@ -13,6 +13,7 @@ import logging
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from ic_agent.config.corpus_paths import resolve_unified_corpus_path
 from ic_agent.config.probe_budget import load_probe_budget_settings
 from ic_agent.config.settings import Settings, get_settings
 from ic_agent.models.domain import DomainConfig
@@ -56,7 +57,7 @@ def build_unified_app(
     budget_settings = load_probe_budget_settings(budget_path)
 
     similar_plan_service = SimilarPlanService(
-        corpus_path=settings.corpus_path,
+        corpus_path=resolve_unified_corpus_path(settings.corpus_path),
         score_fusion_weights=budget_settings.score_fusion,
         embedding_backend=get_embedding_backend(settings),
     )

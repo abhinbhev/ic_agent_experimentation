@@ -11,6 +11,7 @@ Graph shape (see docs/archetecture.md "LangGraph Implementation Notes"):
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from ic_agent.config.corpus_paths import resolve_domain_corpus_path
 from ic_agent.config.probe_budget import load_probe_budget_settings
 from ic_agent.config.settings import Settings, get_settings
 from ic_agent.config.usecase_docs import (
@@ -36,7 +37,7 @@ from ic_agent.services.embeddings import get_embedding_backend
 from ic_agent.services.llm_factory import get_chat_model
 from ic_agent.services.planner_consultant_service import PlannerConsultantService
 from ic_agent.services.planner_service import PlannerService
-from ic_agent.services.retrieval_service import RetrievalService
+from ic_agent.services.retrieval_service import RetrievalService, get_retrieval_client
 from ic_agent.services.similar_plan_service import SimilarPlanService
 from ic_agent.services.synthesizer_service import SynthesizerService
 
@@ -46,7 +47,7 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
     budget_settings = load_probe_budget_settings(settings.probe_budget_path)
 
     similar_plan_service = SimilarPlanService(
-        corpus_path=settings.corpus_path,
+        corpus_path=resolve_domain_corpus_path(domain_config.domain_id, settings.corpus_path),
         score_fusion_weights=budget_settings.score_fusion,
         embedding_backend=get_embedding_backend(settings),
     )
@@ -66,7 +67,9 @@ def build_app(domain_config: DomainConfig, settings: Settings | None = None) -> 
         schema_doc=schema_doc,
         question_format_doc=question_format_doc,
     )
-    retrieval_service = RetrievalService()
+    # Build the retrieval client from the explicit settings so callers
+    # can override ``retrieval_mode`` (e.g. flipping to "mock" from the UI).
+    retrieval_service = RetrievalService(client=get_retrieval_client(settings))
     decision_consultant_service = DecisionConsultantService(domain_config, get_chat_model(settings))
     decision_engine_service = DecisionEngineService(
         domain_config, get_chat_model(settings), weights=budget_settings.incremental_value_weights

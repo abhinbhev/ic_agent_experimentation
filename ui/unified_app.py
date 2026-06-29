@@ -63,6 +63,15 @@ with st.sidebar:
         "How is Brahma performing across brand health and consumption in Brazil?",
         height=120,
     )
+    mock_retrieval = st.checkbox(
+        "🧪 Mock retrieval",
+        value=False,
+        help=(
+            "If on, the retrieval layer returns canned 'Mock answer to: …' "
+            "strings instead of calling the real analysis_template_svc. "
+            "Useful for testing planner/decision logic without a backend."
+        ),
+    )
     run = st.button("Run", type="primary", use_container_width=True)
 
     st.divider()
@@ -100,6 +109,7 @@ def _run_in_background(
     stream_log: list,
     domains: list,
     domain_knowledge_doc: str,
+    run_settings,
 ) -> None:
     """Execute the super-agent run in a background thread.
 
@@ -107,7 +117,7 @@ def _run_in_background(
     for the UI to render, and emits graph events into ``bus``.
     """
     try:
-        app = build_unified_app(domains, settings, domain_knowledge_doc)
+        app = build_unified_app(domains, run_settings, domain_knowledge_doc)
         initial_state = {
             "query": query_text,
             "available_domains": domains,
@@ -243,6 +253,13 @@ if run:
         knowledge_doc_path.read_text(encoding="utf-8") if knowledge_doc_path.exists() else ""
     )
 
+    # If the user ticked the "Mock retrieval" checkbox, override
+    # ``retrieval_mode`` on a per-run settings copy so the cached
+    # singleton is left untouched.
+    run_settings = (
+        settings.model_copy(update={"retrieval_mode": "mock"}) if mock_retrieval else settings
+    )
+
     thread = threading.Thread(
         target=_run_in_background,
         args=(
@@ -251,6 +268,7 @@ if run:
             st.session_state.stream_log,
             available_domains,
             domain_knowledge_doc,
+            run_settings,
         ),
         daemon=True,
         name="unified-agent-run",
