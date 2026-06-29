@@ -304,14 +304,19 @@ If `response` is empty but `sql_result` exists and is an empty list, a descripti
 6. else: `continue`
 
 **Incremental Value Framework (IVF) scoring:**
+
+All five sub-scores are normalized to `[0, 1]` and point the **same** direction: **HIGH = more value in continuing another round**. The engine stops when the weighted sum falls below `stop_threshold`.
+
 ```
-evidence_coverage      = relevant_probes / total_probes_completed          weight: 0.30
-confidence             = decision_consultant confidence score (0-1)         weight: 0.25
-remaining_gaps_score   = unresolved_gaps / total_gaps                       weight: 0.20
-alt_hypotheses_score   = min(new_hypotheses / 3, 1.0)                      weight: 0.15
-probe_cost_score       = max(0, 1 - total_probes / max_total_probes)        weight: 0.10
-stop_threshold         = 0.35
+unresolved_gaps_score  = unresolved_gaps / total_gaps                       weight: 0.40
+low_confidence_score   = 1 - decision_consultant.confidence                 weight: 0.30
+new_hypotheses_score   = min(new_hypotheses / 3, 1.0)                       weight: 0.20
+irrelevance_score      = 1 - relevant_probes / total_probes_completed       weight: 0.05
+budget_headroom_score  = max(0, 1 - total_probes / max_total_probes)        weight: 0.05
+stop_threshold         = 0.30
 ```
+
+Rationale: every sub-score is monotonic in the "continue is valuable" direction so the weighted sum can never become a contradictory signal. `unresolved_gaps` and `low_confidence` carry the most weight (they are the strongest "still work to do" signals); `irrelevance` and `budget_headroom` are weak tiebreakers. `budget_headroom` is not really a value signal — it's already gated by the hard `max_total_probes` stop — so it gets the smallest weight.
 
 All weights and the threshold live in `config/probe_budget.yaml` and are runtime-configurable.
 
@@ -417,12 +422,12 @@ score_fusion:
   rrf_k: 60
 
 incremental_value_weights:
-  evidence_coverage: 0.30
-  confidence: 0.25
-  remaining_gaps: 0.20
-  alternative_hypotheses: 0.15
-  probe_cost: 0.10
-  stop_threshold: 0.35
+  unresolved_gaps: 0.40
+  low_confidence: 0.30
+  new_hypotheses: 0.20
+  irrelevance: 0.05
+  budget_headroom: 0.05
+  stop_threshold: 0.30
 ```
 
 ---

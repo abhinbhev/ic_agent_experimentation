@@ -33,13 +33,18 @@ class DecisionEngineInput(BaseModel):
 
 
 class IncrementalValueBreakdown(BaseModel):
-    """Transparency record of the weighted Incremental Value Framework score."""
+    """Transparency record of the weighted Incremental Value Framework score.
 
-    evidence_coverage: float
-    confidence: float
-    remaining_gaps_score: float
-    alternative_hypotheses_score: float
-    probe_cost_score: float
+    All five sub-scores are normalized to ``[0, 1]`` and point the same way:
+    **HIGH = more value in continuing another round**. ``weighted_total``
+    is compared against ``IncrementalValueWeights.stop_threshold``.
+    """
+
+    unresolved_gaps_score: float
+    low_confidence_score: float
+    new_hypotheses_score: float
+    irrelevance_score: float
+    budget_headroom_score: float
     weighted_total: float
 
 

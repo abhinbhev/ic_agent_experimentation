@@ -28,23 +28,29 @@ class ScoreFusionWeights(BaseModel):
 
 
 class IncrementalValueWeights(BaseModel):
-    """Weights for the Decision Engine's Incremental Value Framework."""
+    """Weights for the Decision Engine's Incremental Value Framework.
 
-    evidence_coverage: float = 0.30
-    confidence: float = 0.25
-    remaining_gaps: float = 0.20
-    alternative_hypotheses: float = 0.15
-    probe_cost: float = 0.10
-    stop_threshold: float = 0.35
+    Every sub-score points the same way: **HIGH = more value in continuing**.
+    The engine stops when the weighted sum falls below ``stop_threshold``.
+
+    See ``DecisionEngineService._score_breakdown`` for sub-score definitions.
+    """
+
+    unresolved_gaps: float = 0.40
+    low_confidence: float = 0.30
+    new_hypotheses: float = 0.20
+    irrelevance: float = 0.05
+    budget_headroom: float = 0.05
+    stop_threshold: float = 0.30
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> "IncrementalValueWeights":
         total = (
-            self.evidence_coverage
-            + self.confidence
-            + self.remaining_gaps
-            + self.alternative_hypotheses
-            + self.probe_cost
+            self.unresolved_gaps
+            + self.low_confidence
+            + self.new_hypotheses
+            + self.irrelevance
+            + self.budget_headroom
         )
         if not (0.99 <= total <= 1.01):
             raise ValueError(f"Incremental value weights must sum to ~1.0, got {total}")

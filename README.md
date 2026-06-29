@@ -191,12 +191,12 @@ score_fusion:
   fusion_method: weighted_sum
 
 incremental_value_weights:
-  evidence_coverage: 0.30
-  confidence: 0.25
-  remaining_gaps: 0.20
-  alternative_hypotheses: 0.15
-  probe_cost: 0.10
-  stop_threshold: 0.35
+  unresolved_gaps: 0.40
+  low_confidence: 0.30
+  new_hypotheses: 0.20
+  irrelevance: 0.05
+  budget_headroom: 0.05
+  stop_threshold: 0.30
 ```
 
 ### Domain config (`config/domains/<domain_id>.yaml`)

@@ -4,11 +4,11 @@ from ic_agent.models.decision_engine import DecisionEngineOutput, IncrementalVal
 
 def _decision_engine_output(continue_: bool, stop_reason: str) -> DecisionEngineOutput:
     breakdown = IncrementalValueBreakdown(
-        evidence_coverage=0.5,
-        confidence=0.5,
-        remaining_gaps_score=0.5,
-        alternative_hypotheses_score=0.5,
-        probe_cost_score=0.5,
+        unresolved_gaps_score=0.5,
+        low_confidence_score=0.5,
+        new_hypotheses_score=0.5,
+        irrelevance_score=0.5,
+        budget_headroom_score=0.5,
         weighted_total=0.5,
     )
     return DecisionEngineOutput(

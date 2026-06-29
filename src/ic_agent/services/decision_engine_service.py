@@ -97,42 +97,49 @@ class DecisionEngineService:
         return output
 
     def _score_breakdown(self, input_data: DecisionEngineInput) -> IncrementalValueBreakdown:
+        """Compute the Incremental Value Framework breakdown.
+
+        All five sub-scores are normalized to ``[0, 1]`` and point the same
+        direction: **HIGH = more value in continuing another round**. This
+        keeps the weighted sum monotonic — the engine stops when the total
+        drops below ``stop_threshold``.
+        """
         consultant = input_data.decision_consultant_output
-
-        evidence_coverage = len(consultant.relevant_probes) / max(
-            input_data.total_probes_completed, 1
-        )
-
-        confidence = consultant.confidence
 
         all_gaps = consultant.remaining_gaps
         unresolved = [g for g in all_gaps if g.category in _UNRESOLVED_GAP_CATEGORIES]
-        remaining_gaps_score = len(unresolved) / max(len(all_gaps), 1)
+        unresolved_gaps_score = len(unresolved) / max(len(all_gaps), 1)
 
-        alternative_hypotheses_score = min(
+        low_confidence_score = max(0.0, min(1.0, 1.0 - consultant.confidence))
+
+        new_hypotheses_score = min(
             len(consultant.new_hypotheses) / _ASSUMED_MAX_NEW_HYPOTHESES, 1.0
         )
 
-        probe_cost_score = max(
+        total_probes = max(input_data.total_probes_completed, 1)
+        relevant = len(consultant.relevant_probes)
+        irrelevance_score = max(0.0, min(1.0, 1.0 - relevant / total_probes))
+
+        budget_headroom_score = max(
             0.0,
             1.0 - (input_data.total_probes_completed / input_data.probe_budget.max_total_probes),
         )
 
         w = self._weights
         weighted_total = (
-            w.evidence_coverage * evidence_coverage
-            + w.confidence * confidence
-            + w.remaining_gaps * remaining_gaps_score
-            + w.alternative_hypotheses * alternative_hypotheses_score
-            + w.probe_cost * probe_cost_score
+            w.unresolved_gaps * unresolved_gaps_score
+            + w.low_confidence * low_confidence_score
+            + w.new_hypotheses * new_hypotheses_score
+            + w.irrelevance * irrelevance_score
+            + w.budget_headroom * budget_headroom_score
         )
 
         return IncrementalValueBreakdown(
-            evidence_coverage=evidence_coverage,
-            confidence=confidence,
-            remaining_gaps_score=remaining_gaps_score,
-            alternative_hypotheses_score=alternative_hypotheses_score,
-            probe_cost_score=probe_cost_score,
+            unresolved_gaps_score=unresolved_gaps_score,
+            low_confidence_score=low_confidence_score,
+            new_hypotheses_score=new_hypotheses_score,
+            irrelevance_score=irrelevance_score,
+            budget_headroom_score=budget_headroom_score,
             weighted_total=weighted_total,
         )
 
