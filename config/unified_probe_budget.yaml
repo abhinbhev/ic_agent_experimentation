@@ -1,0 +1,18 @@
+probe_budget:
+  max_rounds: 2
+  max_probes_per_round: 3
+  max_total_probes: 5
+
+score_fusion:
+  bm25_weight: 0.5
+  embedding_weight: 0.5
+  fusion_method: weighted_sum
+  rrf_k: 60
+
+incremental_value_weights:
+  evidence_coverage: 0.30
+  confidence: 0.25
+  remaining_gaps: 0.20
+  alternative_hypotheses: 0.15
+  probe_cost: 0.10
+  stop_threshold: 0.35
