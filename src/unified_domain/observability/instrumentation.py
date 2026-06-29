@@ -114,6 +114,51 @@ def emit_super_round_done(bus: "EventBus | None", round_idx_1based: int) -> None
     )
 
 
+def emit_round_metrics(
+    bus: "EventBus | None",
+    round_node_id: str,
+    parent_id: str | None,
+    kind: str,
+    round_idx_1based: int,
+    decision_engine_output: Any,
+) -> None:
+    """Attach Decision Engine stop-condition metrics to a round/super-round node.
+
+    Re-emits the node with the latest known label/status and adds a
+    ``metrics`` payload under ``extra`` for the UI to render as a badge.
+    Pulls fields off the output dynamically so this works for both the
+    single-agent and unified ``DecisionEngineOutput`` shapes.
+    """
+    if bus is None or decision_engine_output is None:
+        return
+    out = decision_engine_output
+    breakdown = getattr(out, "value_breakdown", None)
+    breakdown_dict: dict[str, Any] = {}
+    if breakdown is not None and hasattr(breakdown, "model_dump"):
+        breakdown_dict = breakdown.model_dump()
+    elif isinstance(breakdown, dict):
+        breakdown_dict = dict(breakdown)
+    metrics = {
+        "stop_reason": getattr(out, "stop_reason", ""),
+        "continue": bool(getattr(out, "continue_", False)),
+        "ivf": float(getattr(out, "expected_incremental_value", 0.0) or 0.0),
+        "recommended_next_gap": getattr(out, "recommended_next_gap", None),
+        "reason": getattr(out, "reason", ""),
+        "breakdown": breakdown_dict,
+    }
+    label = (
+        f"Super-Round {round_idx_1based}" if kind == "super-round" else f"Round {round_idx_1based}"
+    )
+    bus.emit(
+        round_node_id,
+        parent_id,
+        kind,  # type: ignore[arg-type]
+        "answered",
+        label=label,
+        extra={"round": round_idx_1based, "metrics": metrics},
+    )
+
+
 def emit_super_probes(
     bus: "EventBus | None",
     round_idx_1based: int,
@@ -314,6 +359,18 @@ async def stream_subagent_run(
                         "answered",
                         label=f"Round {round_idx}",
                         extra={"round": round_idx},
+                    )
+
+            elif node_name == "decision_engine":
+                de_out = update.get("decision_engine_output") if isinstance(update, dict) else None
+                if de_out is not None and current_round_node_id is not None:
+                    emit_round_metrics(
+                        bus,
+                        current_round_node_id,
+                        parent_domain_node_id,
+                        "round",
+                        round_idx,
+                        de_out,
                     )
 
             elif node_name == "synthesis":
