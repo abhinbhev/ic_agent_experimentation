@@ -107,6 +107,20 @@
   .super-round-label.r3 { fill: var(--status-answered); }
   .super-round-sublabel { font-size: 10px; fill: var(--muted); letter-spacing: .04em; }
 
+  /* Stop-condition metric pill at the right of round bands */
+  .metrics-pill rect {
+    rx: 8;
+    fill: rgba(15,18,30,.85);
+    stroke: rgba(255,255,255,.08);
+    stroke-width: 1;
+  }
+  .metrics-pill text.k { font-size: 9.5px; fill: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .metrics-pill text.v { font-size: 11.5px; font-weight: 700; }
+  .metrics-pill .v.cont { fill: var(--status-running); }
+  .metrics-pill .v.stop { fill: var(--status-answered); }
+  .metrics-pill .v.budget { fill: var(--status-pending); }
+  .metrics-pill .v.fail { fill: var(--status-failed); }
+
   /* SUB-ROUND bands */
   .round-band { fill: var(--sub-round-band); rx: 8; }
   .round-band-text { fill: var(--sub-round-text); font-size: 10.5px; font-weight: 600;
@@ -430,6 +444,52 @@ function render() {
         const t = mk("text", { class: "round-band-text", x: n._bandX + 10, y: n._bandY + 14 });
         t.textContent = "Sub-Round " + (n.round || 1);
         g.appendChild(t);
+      }
+      // Stop-condition metric pill (super-round + sub-round both get one)
+      if (n.metrics) {
+        const isSuper = n.kind === "super-round";
+        const pillH = isSuper ? 28 : 20;
+        const pillY = n._bandY + (isSuper ? 6 : 1);
+        const padX = 8;
+        const ivfTxt = "IVF " + (n.metrics.ivf ?? 0).toFixed(2);
+        const stopTxt = (n.metrics.stop_reason || "").replace(/_/g, " ").toUpperCase();
+        // approximate width: 7px per char + paddings + gaps
+        const pillW = Math.max(120, ivfTxt.length * 7 + stopTxt.length * 6 + padX * 3 + 18);
+        const pillX = n._bandX + n._bandW - pillW - 10;
+        const pill = mk("g", { class: "metrics-pill" });
+        pill.appendChild(mk("rect", {
+          x: pillX, y: pillY, width: pillW, height: pillH
+        }));
+        const ivfLbl = mk("text", { class: "k", x: pillX + padX, y: pillY + pillH / 2 - 2 });
+        ivfLbl.textContent = ivfTxt;
+        pill.appendChild(ivfLbl);
+        const vClass = n.metrics.continue ? "v cont"
+          : (n.metrics.stop_reason || "").startsWith("max_") ? "v budget"
+          : (n.metrics.stop_reason === "no_progress_this_round") ? "v fail"
+          : "v stop";
+        const vTxt = mk("text", {
+          class: vClass,
+          x: pillX + padX + ivfTxt.length * 6.5 + 14,
+          y: pillY + pillH / 2 + 4
+        });
+        vTxt.textContent = n.metrics.continue ? "→ CONTINUE" : "■ " + stopTxt;
+        pill.appendChild(vTxt);
+        // Tooltip on hover with full breakdown
+        const m = n.metrics;
+        const b = m.breakdown || {};
+        const breakdownLines = Object.entries(b)
+          .filter(([k]) => k !== "weighted_total")
+          .map(([k, v]) => `${k}: ${typeof v === "number" ? v.toFixed(2) : v}`)
+          .join(" · ");
+        const titleEl = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        titleEl.textContent =
+          `Stop reason: ${m.stop_reason}\n` +
+          `IVF: ${(m.ivf ?? 0).toFixed(3)}\n` +
+          (breakdownLines ? `Breakdown: ${breakdownLines}\n` : "") +
+          (m.recommended_next_gap ? `Next gap: ${m.recommended_next_gap}\n` : "") +
+          (m.reason ? `Reason: ${m.reason}` : "");
+        pill.appendChild(titleEl);
+        g.appendChild(pill);
       }
     }
   });

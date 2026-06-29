@@ -51,6 +51,8 @@ def build_tree(events: list[GraphEvent]) -> dict[str, Any] | None:
                 node["round"] = ev.extra["round"]
             if "sublabel" in ev.extra:
                 node["sublabel"] = ev.extra["sublabel"]
+            if "metrics" in ev.extra:
+                node["metrics"] = ev.extra["metrics"]
             nodes[ev.node_id] = node
             order.append(ev.node_id)
         else:
@@ -62,6 +64,8 @@ def build_tree(events: list[GraphEvent]) -> dict[str, Any] | None:
             # merge new extras into rendered fields
             if "sublabel" in ev.extra:
                 existing["sublabel"] = ev.extra["sublabel"]
+            if "metrics" in ev.extra:
+                existing["metrics"] = ev.extra["metrics"]
 
     # Wire children, preserving insertion order
     root: dict[str, Any] | None = None

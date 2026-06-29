@@ -194,10 +194,18 @@ def make_decision_engine_node(
             output.expected_incremental_value,
         )
 
-        # Close the super-round we just finished, so the next planner_consultant
-        # run opens a fresh SR{n+1}.
+        # Attach stop-condition metrics to the super-round, then close it
+        # so the next planner_consultant run opens a fresh SR{n+1}.
         bus = state.get("event_bus")
         round_idx_1based = state.get("rounds_completed", 0) + 1
+        obs.emit_round_metrics(
+            bus,
+            obs.super_round_id(round_idx_1based),
+            "root",
+            "super-round",
+            round_idx_1based,
+            output,
+        )
         obs.emit_super_round_done(bus, round_idx_1based)
 
         return {
