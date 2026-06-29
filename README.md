@@ -2,7 +2,10 @@
 
 A LangGraph-based agentic analytics framework. Given a business question and a domain, it runs an iterative investigation loop — forming hypotheses, selecting KPIs, executing data-fetch queries against a retrieval API, evaluating evidence, and deciding whether another round is worth running — until it produces a business-facing markdown report.
 
-Open `docs/flow_diagram.html` in a browser for an interactive diagram with a full worked example (Brahma in Brazil, Q1 2026).
+The project ships **two agents**:
+
+- **Single-domain agent** (`ic-agent`) — investigates one domain at a time. See `docs/flow_diagram.html` for the interactive diagram (with a Brahma in Brazil Q1 2026 worked example).
+- **Unified super-agent** (`ic-agent-unified`) — orchestrates multiple single-domain agents in parallel to answer cross-domain questions. See `docs/unified_flow_diagram.html` for the interactive diagram.
 
 ---
 
@@ -16,13 +19,18 @@ cp .env.example .env
 
 **CLI:**
 ```bash
+# Single-domain agent
 uv run ic-agent --domain gai_copilot_marketing_brand_guidance_ghq \
   --query "How did Brahma in Brazil perform in Q1 2026?"
+
+# Unified super-agent (auto-discovers all domains)
+uv run ic-agent-unified --query "How did Brahma in Brazil perform in Q1 2026 across perception and consumption?"
 ```
 
 **Streamlit UI:**
 ```bash
-uv run streamlit run ui/app.py
+uv run streamlit run ui/app.py            # single-domain
+uv run streamlit run ui/unified_app.py    # unified super-agent
 ```
 
 **Tests** (no API key required):
@@ -94,6 +102,76 @@ The Decision Engine checks these in order (first match wins):
 4. `no_progress_this_round` — stall detected: the Planner produced zero questions, or every probe executed this round was marked irrelevant by the Decision Consultant
 5. `incremental_value_below_threshold`
 6. `continue`
+
+---
+
+## Unified super-agent (cross-domain)
+
+The **super-agent** (`ic-agent-unified`) mirrors the single-agent's 7-node loop, but replaces the retrieval API call with **parallel single-domain agent invocations**. It is purely additive — no existing code is modified.
+
+```
+START → Unified Similar Plan → Unified Planner Consultant → Domain Router
+      → Domain Agent Executor (parallel sub-agent runs via asyncio.gather)
+      → Unified Decision Consultant → Unified Decision Engine
+      ──(continue)──→ Unified Planner Consultant
+      ──(stop)──────→ Unified Synthesizer → END
+```
+
+### Two key substitutions vs. the single-agent
+
+| Single-agent node | Super-agent equivalent | Difference |
+|---|---|---|
+| **Planner** (KPI selection) | **Domain Router** | Assigns each probe to one or more sub-domains and writes a self-contained scoped question. Sees only domain display names + dataset descriptions — no KPI knowledge. |
+| **Execution** (HTTP retrieval) | **Domain Agent Executor** | For each `DomainProbe`, builds a fresh single-agent graph and `await app.ainvoke(...)`. All sub-agents run concurrently via `asyncio.gather`. Each sub-agent's `final_answer.markdown` becomes one cross-domain evidence entry. |
+
+### Zero-shot prompts
+
+Every super-agent LLM component (Planner Consultant, Domain Router, Decision Consultant, Decision Engine, Synthesizer) uses a **zero-shot system prompt**: no domain names, no KPI references, no dataset specifics in the static prompt. Domain context comes only via the human message payload:
+- `available_domains` — list of registered sub-domains with dataset descriptions
+- `domain_knowledge_doc` — `docs/metadata/unified_domain/knowledge_doc.md`, a KPI-free overview of every sub-domain and how they relate
+
+The Unified Planner Consultant is instructed to reason about **domain-knowledge-based probes** (what kinds of business questions each sub-domain can answer) — *not* about specific KPIs. KPI selection stays inside each sub-agent's own Planner.
+
+### Parallel execution
+
+The Domain Agent Executor dispatches all `DomainAssignment`s concurrently. Sub-agents are fully independent — no shared state, no shared cache. Failures in one sub-agent are caught and logged; the super-agent continues with the remaining successful entries.
+
+### Budget
+
+```yaml
+# config/unified_probe_budget.yaml
+probe_budget:
+  max_rounds: 2
+  max_probes_per_round: 3
+  max_total_probes: 5
+```
+
+A super-agent "probe" is one sub-agent invocation. Each sub-agent has its own internal budget (3 rounds × 5 probes × 8 total), so worst case is ~40 retrieval API calls across all sub-agents in one super-agent run.
+
+### Evidence
+
+Each `UnifiedEvidenceLedgerEntry` carries:
+- `result` — the sub-agent's synthesized markdown report (for Decision Consultant + Synthesizer)
+- `sub_evidence` — the sub-agent's full internal evidence ledger (for traceability / debugging)
+- `source_domain_id` — which sub-domain produced this entry
+
+### Files added (super-agent only — single-agent untouched)
+
+```
+src/unified_domain/                            # all super-agent code
+├── models/                                    # state, domain_router, evidence
+├── prompts/                                   # zero-shot SYSTEM_PROMPT constants
+├── services/                                  # one service per node
+├── graph/                                     # build_graph, nodes, edges
+└── main.py                                    # ic-agent-unified CLI
+
+config/unified_probe_budget.yaml               # super-agent budget
+docs/metadata/unified_domain/knowledge_doc.md  # consolidated KPI-free domain doc
+ui/unified_app.py                              # Streamlit UI for super-agent
+tests/unified/                                 # 18 unit + integration tests
+```
+
+See `docs/unified_flow_diagram.html` for the interactive diagram.
 
 ---
 
@@ -218,5 +296,7 @@ Unit tests use a `FakeStructuredChatModel` test double and a stub embedding back
 |------|-------------|
 | `docs/archetecture.md` | Original architecture specification |
 | `docs/prompt_of_prompts.md` | Prompt design guide and style reference |
-| `docs/flow_diagram.html` | Interactive flow diagram — open in browser; includes a full worked example using real Brahma/Brazil Q1 2026 data |
-| `CLAUDE.md` | Comprehensive technical reference for AI coding assistants: every architectural decision, known pitfall, and file-level explanation |
+| `docs/flow_diagram.html` | Interactive flow diagram (single-domain agent) — open in browser; includes a full worked example using real Brahma/Brazil Q1 2026 data |
+| `docs/unified_flow_diagram.html` | Interactive flow diagram for the **unified super-agent**: 7-node loop, Domain Router, parallel sub-agent execution |
+| `docs/metadata/unified_domain/knowledge_doc.md` | Consolidated cross-domain knowledge doc fed to the Unified Planner Consultant + Synthesizer at runtime (KPI-free) |
+| `CLAUDE.md` | Comprehensive technical reference for AI coding assistants: every architectural decision, known pitfall, and file-level explanation (covers both single-agent and super-agent) |

@@ -20,6 +20,8 @@ Two live domains:
 - `gai_copilot_marketing_brand_guidance_ghq` — brand health / perception data (`brand_guidance` usecase)
 - `gai_copilot_marketing_category_ghq` — consumer consumption data / POS program (`category` usecase)
 
+**There is also a unified super-agent** (`src/unified_domain/`) that orchestrates multiple single-domain agents in parallel to answer cross-domain questions. It mirrors the same 7-node loop but uses single-agents as its "retrieval" layer. See the "Super-Agent (Unified Domain)" section below.
+
 ---
 
 ## Directory layout
@@ -32,7 +34,8 @@ ic_agent_experimentation/
 ├── .env.example                       # copy to .env and fill in secrets
 │
 ├── config/
-│   ├── probe_budget.yaml              # budget limits, score-fusion weights, IVF weights
+│   ├── probe_budget.yaml              # single-agent budget limits, score-fusion weights, IVF weights
+│   ├── unified_probe_budget.yaml      # super-agent budget (separate, tighter)
 │   └── domains/
 │       ├── gai_copilot_marketing_brand_guidance_ghq.yaml   # LIVE domain — brand health
 │       ├── gai_copilot_marketing_category_ghq.yaml         # LIVE domain — category/POS consumption
@@ -44,7 +47,8 @@ ic_agent_experimentation/
 ├── docs/
 │   ├── archetecture.md                # original architecture spec (primary reference)
 │   ├── prompt_of_prompts.md           # prompt design guide (style reference)
-│   ├── flow_diagram.html              # interactive HTML flow diagram (open in browser)
+│   ├── flow_diagram.html              # interactive HTML flow diagram — single-agent
+│   ├── unified_flow_diagram.html      # interactive HTML flow diagram — super-agent (Domain Router + parallel)
 │   ├── brand highlights refined.pdf   # real run output PDF (used to populate the worked example)
 │   ├── brand_highlights_extracted.md  # OCR text of the above PDF
 │   └── metadata/
@@ -53,12 +57,14 @@ ic_agent_experimentation/
 │       │   ├── question_format.md     # retrieval NLP extraction guide (fed to Planner — critical)
 │       │   ├── COLUMN_DESCRIPTION.csv # column-level schema fed to Planner + Synthesizer
 │       │   └── TABLE_DESCRIPTION.csv  # NOT used (user decision: columns are sufficient)
-│       └── gai_copilot_marketing_category_ghq/
-│           ├── knowledge_doc.md       # category usecase knowledge doc
-│           ├── question_format.md     # category NLP extraction guide
-│           └── COLUMN_DESCRIPTION.csv # placeholder (to be filled in)
+│       ├── gai_copilot_marketing_category_ghq/
+│       │   ├── knowledge_doc.md       # category usecase knowledge doc
+│       │   ├── question_format.md     # category NLP extraction guide
+│       │   └── COLUMN_DESCRIPTION.csv # placeholder (to be filled in)
+│       └── unified_domain/
+│           └── knowledge_doc.md       # KPI-free cross-domain doc (fed to super-agent Planner Consultant + Synthesizer)
 │
-├── src/ic_agent/
+├── src/ic_agent/                       # SINGLE-DOMAIN AGENT — unchanged
 │   ├── main.py                        # CLI entry point
 │   ├── config/
 │   │   ├── settings.py                # all env vars in one place (pydantic-settings)
@@ -104,18 +110,31 @@ ic_agent_experimentation/
 │       ├── timing.py                  # now_iso()
 │       └── ssl_setup.py
 │
+├── src/unified_domain/                 # SUPER-AGENT — orchestrates parallel single-agents
+│   ├── main.py                        # ic-agent-unified CLI
+│   ├── models/                        # UnifiedAgentState, DomainProbe, DomainAssignment, etc.
+│   ├── prompts/                       # zero-shot SYSTEM_PROMPTs (no domain/KPI references)
+│   ├── services/                      # planner_consultant, domain_router, domain_agent_executor, etc.
+│   └── graph/                         # build_graph, nodes, edges for unified StateGraph
+│
 ├── tests/
 │   ├── conftest.py                    # FakeStructuredChatModel, fixtures, stub embeddings
 │   ├── test_config.py
 │   ├── test_planner_service.py
 │   ├── test_similar_plan_service.py
 │   ├── test_usecase_docs.py
-│   ├── test_planner_service.py
 │   ├── test_end_to_end_graph.py
-│   └── test_llm_integration.py        # skipped without OPENAI_API_KEY
+│   ├── test_llm_integration.py        # skipped without OPENAI_API_KEY
+│   └── unified/                       # super-agent tests (18 tests)
+│       ├── test_domain_router_service.py
+│       ├── test_domain_agent_executor.py
+│       ├── test_unified_services.py
+│       ├── test_unified_end_to_end.py
+│       └── test_unified_integration.py # skipped without OPENAI_API_KEY
 │
 └── ui/
-    └── app.py                         # Streamlit UI (uv run streamlit run ui/app.py)
+    ├── app.py                         # single-agent UI (uv run streamlit run ui/app.py)
+    └── unified_app.py                 # super-agent UI (uv run streamlit run ui/unified_app.py)
 ```
 
 ---
@@ -452,6 +471,124 @@ uv run streamlit run ui/app.py
 **Planner generating context-dependent questions.** The retrieval service receives each question in complete isolation — it has no memory of prior questions and no shared context. Questions like "What is the power of the same brand in the prior period?" or "same as above but for awareness" will fail to extract parameters correctly. Every question must be fully self-contained: brand, country, period, and all other dimension values must be spelled out explicitly in the question text itself. The SELF-CONTAINED QUESTIONS principle and a corresponding SELF-CHECK in the Planner prompt enforce this.
 
 **Duplicate probes in subsequent rounds.** Fixed by two-layer deduplication: LLM sees `asked_questions` in payload; service deterministically skips any question already in the set. If you see duplicates, check that `evidence_ledger` is being passed through state correctly in `nodes.py:make_planner_node`.
+
+---
+
+## Super-Agent (Unified Domain)
+
+The super-agent in `src/unified_domain/` orchestrates multiple single-domain agents to answer **cross-domain** business questions (e.g., "How did Brahma perform in Brazil in Q1 2026 across perception and consumption?"). It is purely additive — **nothing in `src/ic_agent/` was modified**.
+
+### Architecture (mirrors the single-agent 7-node loop)
+
+```
+START → Unified Similar Plan → Unified Planner Consultant → Domain Router
+      → Domain Agent Executor (parallel sub-agent runs via asyncio.gather)
+      → Unified Decision Consultant → Unified Decision Engine
+      ──(continue)──→ Unified Planner Consultant
+      ──(stop)──────→ Unified Synthesizer → END
+```
+
+**Two key substitutions vs. single-agent:**
+
+| Single-agent node | Super-agent equivalent | Difference |
+|---|---|---|
+| **Planner** (KPI selection) | **Domain Router** | LLM that assigns each probe candidate to one or more sub-domains and writes a self-contained `scoped_question`. Sees only domain `display_name` + `datasets` descriptions — no KPI knowledge. |
+| **Execution** (HTTP retrieval) | **Domain Agent Executor** | For each `DomainProbe`, builds a fresh single-agent graph via `build_app(domain_config, settings)` and runs `await app.ainvoke(...)`. All probes dispatched concurrently via `asyncio.gather`. The sub-agent's `final_answer.markdown` becomes one `UnifiedEvidenceLedgerEntry.result`; the sub-agent's internal `evidence_ledger` is preserved under `sub_evidence`. |
+
+### Zero-shot prompts (strict constraint)
+
+Every super-agent LLM component uses a **zero-shot SYSTEM_PROMPT**: no domain names, no KPI references, no dataset specifics in the static prompt. Domain context comes only via the human message payload:
+- `available_domains` — list of registered sub-domains (id, display_name, dataset descriptions)
+- `domain_knowledge_doc` — `docs/metadata/unified_domain/knowledge_doc.md`, a KPI-free consolidated overview of every sub-domain and how they relate
+
+The Unified Planner Consultant is instructed to reason about **domain-knowledge-based probes** (what kinds of business questions each sub-domain can answer) — *not* about specific KPIs. KPI selection stays inside each sub-agent's own Planner (unchanged).
+
+### File layout
+
+```
+src/unified_domain/
+├── models/
+│   ├── state.py                          # UnifiedAgentState
+│   ├── evidence.py                       # UnifiedEvidenceLedgerEntry (with source_domain_id, sub_evidence)
+│   ├── domain_router.py                  # DomainProbe, DomainAssignment, DomainRouterInput/Output
+│   ├── planner_consultant.py             # UnifiedPlannerConsultantInput/Output
+│   └── decision_consultant.py            # UnifiedDecisionConsultantInput/Output
+├── prompts/                              # all zero-shot SYSTEM_PROMPT constants
+│   ├── planner_consultant.py
+│   ├── domain_router.py
+│   ├── decision_consultant.py
+│   ├── decision_engine.py
+│   └── synthesizer.py
+├── services/
+│   ├── planner_consultant_service.py
+│   ├── domain_router_service.py          # LLM-backed domain assignment + dedup
+│   ├── domain_agent_executor.py          # async parallel sub-agent runner (execute / execute_sync)
+│   ├── decision_consultant_service.py
+│   ├── decision_engine_service.py        # converts unified models → single-agent models to reuse IVF logic
+│   └── synthesizer_service.py
+├── graph/
+│   ├── build_graph.py                    # wires unified StateGraph
+│   ├── nodes.py                          # make_*_node factories
+│   └── edges.py                          # route_after_decision_engine
+└── main.py                               # ic-agent-unified CLI
+
+config/unified_probe_budget.yaml          # super-agent budget
+docs/metadata/unified_domain/knowledge_doc.md  # consolidated KPI-free doc
+ui/unified_app.py                         # Streamlit UI
+tests/unified/                            # 18 tests (unit + end-to-end + integration)
+```
+
+### Parallel execution
+
+`DomainAgentExecutor.execute()` is `async` and uses `asyncio.gather(*[run_one(a) for a in assignments])` to dispatch all `DomainAssignment`s concurrently. Within a single assignment, probes for the same domain run sequentially (one sub-agent at a time per domain). Different domains run in true parallel.
+
+A sync wrapper `execute_sync()` is provided because LangGraph nodes are sync — it uses `asyncio.run()` or `asyncio.new_event_loop()` depending on context.
+
+**Failure handling:** if a sub-agent raises an exception, it's caught and an evidence entry with the error message as `result` is returned — the super-agent continues with successful entries.
+
+### Probe budget (separate from single-agent)
+
+```yaml
+# config/unified_probe_budget.yaml
+probe_budget:
+  max_rounds: 2
+  max_probes_per_round: 3
+  max_total_probes: 5
+```
+
+A super-agent "probe" = one sub-agent invocation (which is itself a full multi-round investigation with its own 3/5/8 budget). Worst case: 5 × 8 = 40 retrieval API calls per super-agent run.
+
+### Decision Engine reuse
+
+`UnifiedDecisionEngineService` converts unified models → single-agent models internally so it can call the existing `DecisionEngineService` logic verbatim. The IVF scoring formula is domain-agnostic; only the input shape needed adapting.
+
+### Forward-reference quirk
+
+`DomainRouterInput` in `models/domain_router.py` uses `from __future__ import annotations` to avoid a circular import with `UnifiedPlannerConsultantOutput`. Don't remove that import.
+
+### CLI + UI
+
+```bash
+uv run ic-agent-unified --query "How did Brahma perform in Brazil in Q1 2026 across perception and consumption?"
+uv run streamlit run ui/unified_app.py
+```
+
+The CLI auto-discovers all `config/domains/*.yaml` files as candidate sub-domains. The UI streams each super-agent node's output and surfaces both the unified ledger and each sub-agent's internal evidence in collapsible sections.
+
+### Tests
+
+All 18 unified tests pass without `OPENAI_API_KEY` using `FakeStructuredChatModel`. Integration tests in `tests/unified/test_unified_integration.py` make real OpenAI calls and skip without the key.
+
+```bash
+uv run pytest -v tests/unified/          # super-agent only
+uv run pytest -v                         # all 56 tests (38 single-agent + 18 super-agent)
+```
+
+The Domain Agent Executor tests mock `build_app()` to return a fake compiled graph that asynchronously returns a canned `final_state` — this avoids running real sub-agents during unit tests.
+
+### Interactive flow diagram
+
+Open `docs/unified_flow_diagram.html` in a browser. Mirrors `docs/flow_diagram.html` structure: 9 SVG nodes (input/output + 7 pipeline nodes), pink loop edge, green stop edge, plus a magenta dashed edge for the parallel sub-agent dispatch from Domain Router → Domain Agent Executor. Click any node for input/output/prompt details.
 
 ---
 
