@@ -1,0 +1,39 @@
+# Unified Super-Agent similar-plan corpus -- archetypes for cross-domain
+# investigations that combine multiple single-domain agents.
+# Probe patterns are KPI-agnostic and describe directional investigation
+# steps. Each archetype references which domains it typically engages.
+
+- id: cross_domain_brand_health_and_consumption
+  intent: "How is a brand performing in a country/period?"
+  dataset_family: ["Brand Guidance", "Category"]
+  analysis_type: "cross_domain_brand_performance"
+  probe_sequence:
+    - "overall brand health and equity trajectory (perception side)"
+    - "actual consumption performance and trend (behavioural side)"
+    - "alignment or divergence between perception and consumption"
+    - "demographic or competitor context that explains the link"
+    - "gap exploration based on evidence from both domains"
+  failure_modes:
+    - "treating brand health and consumption in isolation rather than connecting them"
+    - "missing the explanatory link between perception drivers and consumption shifts"
+  stop_condition: "both perception and consumption explained, and the link between them characterised"
+  description: >
+    Use when the user asks how a brand is doing overall in a way that spans
+    both perception (brand guidance) and behaviour (category consumption).
+    The super-agent should fan out one investigation strand per domain in
+    parallel, then a second round to connect findings across them.
+
+- id: cross_domain_kpi_lookup
+  intent: "What is the value of one or more KPIs spanning multiple domains for a brand in a country/period?"
+  dataset_family: ["Brand Guidance", "Category"]
+  analysis_type: "cross_domain_kpi_lookup"
+  probe_sequence:
+    - "fetch the requested KPI from each relevant domain"
+    - "report values side-by-side without forcing a cross-domain narrative"
+  failure_modes:
+    - "over-investigating a simple lookup by adding hypothesis-driven probes"
+  stop_condition: "all requested KPIs returned from the relevant domains"
+  description: >
+    Use for straightforward multi-KPI lookups where the user wants raw
+    values from multiple domains -- no deep reasoning, just routing the
+    right question to the right domain.
