@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Unified Domain Super-Agent — Orchestration Flow</title>
+<style>
+  :root {
+    --llm: #5b6cf0;
+    --logic: #2fa86b;
+    --hybrid: #d98a2b;
+    --subagent: #c84cb1;
+    --bg: #0f1320;
+    --panel: #171c2e;
+    --text: #e8eaf2;
+    --muted: #9aa3bd;
+    --line: #5a6380;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  p.subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(560px, 2fr) 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .diagram-card, .panel-card, .legend-card {
+    background: var(--panel);
+    border: 1px solid #2a3050;
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  svg { width: 100%; height: auto; display: block; }
+
+  .node rect {
+    rx: 10px;
+    stroke-width: 2;
+    cursor: pointer;
+    transition: filter .12s ease, transform .12s ease;
+  }
+  .node:hover rect { filter: brightness(1.25); }
+  .node.selected rect { stroke: #ffd166; stroke-width: 3; }
+  .node text { fill: var(--text); font-size: 13px; pointer-events: none; }
+  .node .sub { fill: var(--muted); font-size: 10.5px; }
+
+  .node.llm rect { fill: #232a4d; stroke: var(--llm); }
+  .node.logic rect { fill: #1d3328; stroke: var(--logic); }
+  .node.hybrid rect { fill: #332a1a; stroke: var(--hybrid); }
+  .node.subagent rect { fill: #3a1f33; stroke: var(--subagent); }
+  .node.io rect { fill: #20253b; stroke: var(--line); stroke-dasharray: 4 3; }
+
+  .edge { stroke: var(--line); stroke-width: 2; fill: none; }
+  .edge.loop { stroke: #ff8fa3; stroke-width: 2.5; }
+  .edge.stop { stroke: #62e0a1; stroke-width: 2.5; }
+  .edge.parallel { stroke: var(--subagent); stroke-width: 2; stroke-dasharray: 5 3; }
+  .edge-label { fill: var(--muted); font-size: 11px; }
+  .edge-label.loop { fill: #ff8fa3; }
+  .edge-label.stop { fill: #62e0a1; }
+  .edge-label.parallel { fill: var(--subagent); }
+
+  .round-badge {
+    fill: none;
+    stroke: #ff8fa3;
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    opacity: .55;
+  }
+  .round-text { fill: #ff8fa3; font-size: 11px; opacity: .8; }
+
+  /* side panel */
+  .panel-card h2 { margin: 0 0 6px; font-size: 16px; }
+  .panel-card .tag {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    margin-bottom: 10px; font-weight: 600; letter-spacing: .03em;
+  }
+  .tag.llm { background: rgba(91,108,240,.18); color: #aab4ff; border: 1px solid var(--llm); }
+  .tag.logic { background: rgba(47,168,107,.18); color: #8be0b4; border: 1px solid var(--logic); }
+  .tag.hybrid { background: rgba(217,138,43,.18); color: #f3c98c; border: 1px solid var(--hybrid); }
+  .tag.subagent { background: rgba(200,76,177,.18); color: #ee9bdc; border: 1px solid var(--subagent); }
+
+  .panel-card h3 { margin: 14px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .panel-card ul { margin: 4px 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+  .panel-card p { font-size: 13px; line-height: 1.55; margin: 6px 0; }
+  .panel-card code {
+    background: #0e1224; border: 1px solid #2a3050; border-radius: 4px;
+    padding: 1px 5px; font-size: 12px; color: #c8d0ff;
+  }
+  .placeholder { color: var(--muted); font-size: 13px; }
+
+  .legend-card { margin-top: 16px; }
+  .legend-card h3 { margin: 0 0 8px; font-size: 13px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 6px 0; color: var(--muted); }
+  .swatch { width: 16px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+  .swatch.llm { background: #232a4d; border: 2px solid var(--llm); }
+  .swatch.logic { background: #1d3328; border: 2px solid var(--logic); }
+  .swatch.hybrid { background: #332a1a; border: 2px solid var(--hybrid); }
+  .swatch.subagent { background: #3a1f33; border: 2px solid var(--subagent); }
+  .swatch.io { background: #20253b; border: 2px dashed var(--line); }
+  .legend-line { width: 24px; height: 2px; background: var(--line); }
+  .legend-line.loop { background: #ff8fa3; height: 2.5px; }
+  .legend-line.stop { background: #62e0a1; height: 2.5px; }
+  .legend-line.parallel { background: var(--subagent); height: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Unified Domain Super-Agent — Orchestration Flow</h1>
+<p class="subtitle">
+  Mirrors the single-agent 7-node loop but replaces the retrieval API call with
+  <b>parallel single-domain agent invocations</b>. Click any box for details. The
+  <span style="color:var(--subagent)">pink-dashed</span> box is the Domain Agent Executor,
+  which spawns full single-agent runs in parallel — each sub-agent independently runs
+  its own multi-round investigation loop, with its result fed back into the
+  super-agent's evidence ledger.
+</p>
+
+<div class="layout">
+  <div class="diagram-card">
+    <svg viewBox="0 0 900 760" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"></path>
+        </marker>
+        <marker id="arrow-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#ff8fa3"></path>
+        </marker>
+        <marker id="arrow-stop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#62e0a1"></path>
+        </marker>
+        <marker id="arrow-parallel" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#c84cb1"></path>
+        </marker>
+      </defs>
+
+      <!-- round indicator -->
+      <circle class="round-badge" cx="550" cy="475" r="245"></circle>
+      <text class="round-text" x="550" y="475" text-anchor="middle">one "round" of the super-agent loop</text>
+
+      <g id="edges"></g>
+      <g id="nodes"></g>
+    </svg>
+  </div>
+
+  <div>
+    <div class="panel-card" id="panel">
+      <p class="placeholder">Click a box in the diagram to see what it does, what
+        goes in, and what comes out.</p>
+    </div>
+
+    <div class="legend-card">
+      <h3>Legend</h3>
+      <div class="legend-row"><span class="swatch llm"></span> LLM-backed (structured output)</div>
+      <div class="legend-row"><span class="swatch hybrid"></span> Mostly deterministic + small LLM call</div>
+      <div class="legend-row"><span class="swatch logic"></span> Pure logic / retrieval — no LLM</div>
+      <div class="legend-row"><span class="swatch subagent"></span> Spawns parallel single-domain sub-agents</div>
+      <div class="legend-row"><span class="swatch io"></span> Query / final report</div>
+      <div class="legend-row"><span class="legend-line"></span> Normal data flow</div>
+      <div class="legend-row"><span class="legend-line parallel"></span> Parallel sub-agent dispatch (async)</div>
+      <div class="legend-row"><span class="legend-line loop"></span> "continue" — next round</div>
+      <div class="legend-row"><span class="legend-line stop"></span> "stop" — final synthesis</div>
+      <h3 style="margin-top:14px;">Zero-shot prompting</h3>
+      <div class="legend-row">All super-agent LLM components receive
+        <b>zero-shot system prompts</b> — no domain names, no KPI references.
+        Domain context comes only via the consolidated knowledge doc and
+        available domains list in the human message payload.</div>
+      <h3 style="margin-top:14px;">Budget</h3>
+      <div class="legend-row">Super-agent: 2 rounds, 3 probes/round, 5 total probes.
+        Each probe is a full single-domain agent run, which has its own internal
+        budget (3 rounds, 5 probes/round, 8 total retrieval calls).</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const NODES = [
+  { id: "query", x: 550, y: 40, w: 210, h: 60, cls: "io",
+    title: "User Query", sub: "+ all available domains + knowledge doc",
+    tag: "io", tagLabel: "Input",
+    body: `<p>A cross-domain business question. Unlike the single-agent, the
+      super-agent does <b>not</b> require a domain selection — it auto-loads
+      every <code>config/domains/*.yaml</code> as a candidate sub-domain.</p>
+      <h3>Loaded automatically</h3>
+      <ul>
+        <li><code>available_domains</code>: list of all registered
+          <code>DomainConfig</code> objects (id, display_name, datasets)</li>
+        <li><code>domain_knowledge_doc</code>:
+          <code>docs/metadata/unified_domain/knowledge_doc.md</code> —
+          a KPI-free, consolidated overview of every sub-domain, what each
+          covers, and how they relate</li>
+      </ul>
+      <h3>Becomes</h3>
+      <ul>
+        <li><code>state.query</code></li>
+        <li><code>state.available_domains</code></li>
+        <li><code>state.domain_knowledge_doc</code></li>
+      </ul>` },
+
+  { id: "similar_plan", x: 550, y: 150, w: 200, h: 60, cls: "logic",
+    title: "Unified Similar Plan", sub: "hybrid search (BM25 + embeddings)",
+    tag: "logic", tagLabel: "Logic / retrieval",
+    body: `<p>Same hybrid-search service as the single-agent, run against the
+      shared corpus. Returns investigation patterns useful as planning
+      precedent.</p>
+      <h3>Output</h3>
+      <ul><li><code>similar_patterns</code>: list of
+        <code>{pattern_id, confidence, reason, probe_strategy}</code>.
+        The highest-confidence match's <code>probe_strategy</code> is treated
+        as a checklist of investigation areas by the Unified Planner
+        Consultant.</li></ul>
+      <p><b>Note:</b> the underlying corpus contains patterns tagged with
+      <code>dataset_family</code>; in unified mode the metadata filter is
+      relaxed so patterns from any sub-domain are eligible.</p>` },
+
+  { id: "planner_consultant", x: 550, y: 270, w: 210, h: 70, cls: "llm",
+    title: "Unified Planner Consultant", sub: "LLM · cross-domain plan · zero-shot",
+    tag: "llm", tagLabel: "LLM-backed",
+    body: `<p><b>Zero-shot. Domain-agnostic. KPI-agnostic.</b> Reads the
+      consolidated <code>domain_knowledge_doc</code> to understand what each
+      sub-domain covers, then drafts hypotheses and directional probe goals
+      grounded in <b>domain knowledge</b> — not KPI names.</p>
+      <h3>Input</h3>
+      <ul>
+        <li><code>query</code>, <code>available_domains</code>,
+          <code>domain_knowledge_doc</code></li>
+        <li><code>similar_patterns</code></li>
+        <li><code>evidence_ledger</code>, <code>remaining_gaps</code>,
+          <code>recommended_next_gap</code> (empty on round 1)</li>
+      </ul>
+      <h3>Output</h3>
+      <ul>
+        <li><code>objective</code>, <code>hypotheses[]</code>,
+          <code>probe_candidates[]</code> (id, goal, expected_value, reason)
+          — each <code>goal</code> is a directional, KPI-free business question</li>
+        <li><code>success_criteria</code>, <code>open_questions</code></li>
+      </ul>
+      <h3>Prompt</h3>
+      <p>Static <code>SYSTEM_PROMPT</code> only — <b>no DOMAIN GUIDELINES
+      section</b>. The system prompt explicitly tells the model to propose
+      probes based on domain knowledge (what kinds of business questions each
+      sub-domain can answer), <b>not</b> on specific KPIs. The Domain Router
+      handles mapping to sub-domains; the per-sub-domain Planner handles KPI
+      selection.</p>` },
+
+  { id: "domain_router", x: 750, y: 415, w: 180, h: 70, cls: "llm",
+    title: "Domain Router", sub: "LLM · assigns probes to sub-domains · zero-shot",
+    tag: "llm", tagLabel: "LLM-backed (zero-shot)",
+    body: `<p><b>The super-agent's equivalent of the single-agent's Planner</b>
+      — but instead of selecting KPIs, it selects <b>sub-domains</b>. Given
+      directional probe goals and the list of available domains (with dataset
+      descriptions), it decides which sub-domain(s) each probe should be sent
+      to, and writes a self-contained scoped question for each.</p>
+      <h3>Input</h3>
+      <ul>
+        <li><code>consultant_plan.probe_candidates[]</code></li>
+        <li><code>available_domains</code> — list of
+          <code>{domain_id, display_name, datasets}</code> (dataset
+          descriptions are the only domain knowledge the router sees)</li>
+        <li><code>asked_questions</code> — every scoped question sent in
+          prior rounds (dedup guard)</li>
+      </ul>
+      <h3>Rules</h3>
+      <ul>
+        <li><b>Self-contained questions:</b> each scoped question must
+          include all context (brand, country, period, etc.) so the
+          sub-agent can investigate independently.</li>
+        <li><b>Multi-domain probes:</b> a probe may map to multiple domains
+          if the information genuinely lives in different datasets.</li>
+        <li><b>Dedup:</b> any scoped question matching an
+          <code>asked_questions</code> entry is dropped deterministically
+          after the LLM call.</li>
+        <li>Total <code>DomainProbe</code>s capped at
+          <code>max_probes_per_round</code> (default 3).</li>
+      </ul>
+      <h3>Output</h3>
+      <ul>
+        <li><code>assignments[]</code> →
+          <code>{domain_id, domain_display_name, probes[]}</code></li>
+        <li>each <code>DomainProbe</code> →
+          <code>{probe_candidate_id, domain_id, scoped_question,
+          expected_value, reason}</code></li>
+      </ul>
+      <h3>Prompt</h3>
+      <p>Static <code>SYSTEM_PROMPT</code> only — <b>zero-shot</b>. No KPI
+      names, no domain-specific rules; all domain info is in the human
+      message payload.</p>` },
+
+  { id: "domain_execution", x: 700, y: 600, w: 200, h: 90, cls: "subagent",
+    title: "Domain Agent Executor", sub: "parallel single-agent runs (asyncio.gather)",
+    tag: "subagent", tagLabel: "Spawns parallel sub-agents",
+    body: `<p>The super-agent's equivalent of the single-agent's
+      <code>Execution</code> node — but instead of one HTTP retrieval call
+      per probe, it runs a <b>full single-domain agent graph</b> per probe,
+      with all probes dispatched in <b>parallel via
+      <code>asyncio.gather</code></b>.</p>
+      <h3>How it works</h3>
+      <ol>
+        <li>For each <code>DomainAssignment</code>, load the sub-domain's
+          <code>DomainConfig</code> via <code>load_domain_config</code>.</li>
+        <li>For each <code>DomainProbe</code> in the assignment, build a
+          fresh single-agent graph via
+          <code>build_app(domain_config, settings)</code>.</li>
+        <li>Invoke the sub-agent asynchronously:
+          <code>await app.ainvoke(initial_state)</code> with the probe's
+          <code>scoped_question</code> as <code>query</code>.</li>
+        <li>All sub-agents run concurrently — different domains run in
+          parallel; probes within one domain run sequentially.</li>
+        <li>The sub-agent's <code>final_answer.markdown</code> becomes the
+          <code>result</code> of a new
+          <code>UnifiedEvidenceLedgerEntry</code>, tagged with
+          <code>source_domain_id</code>. The sub-agent's internal
+          <code>evidence_ledger</code> is preserved under
+          <code>sub_evidence</code> for traceability.</li>
+      </ol>
+      <h3>Output</h3>
+      <ul>
+        <li>new <code>UnifiedEvidenceLedgerEntry</code> rows:
+          <code>{probe_id, question, source_domain_id, result,
+          sub_evidence, created_at, round_index}</code></li>
+        <li>appended to <code>evidence_ledger</code></li>
+      </ul>
+      <h3>Failure handling</h3>
+      <p>If a sub-agent raises an exception, the executor catches it, logs
+      an ERROR, and returns an entry with the error message as
+      <code>result</code> — the super-agent continues with the remaining
+      successful entries.</p>` },
+
+  { id: "decision_consultant", x: 400, y: 600, w: 200, h: 70, cls: "llm",
+    title: "Unified Decision Consultant", sub: "LLM · cross-domain evaluation · zero-shot",
+    tag: "llm", tagLabel: "LLM-backed",
+    body: `<p><b>Zero-shot.</b> Reads the entire cross-domain evidence
+      ledger (each entry tagged with <code>source_domain_id</code>) and
+      judges how well it answers the original question. Specifically
+      instructed to evaluate <b>cross-domain coverage</b> — e.g., "brand
+      perception is well-covered but consumption data is missing."</p>
+      <h3>Input</h3>
+      <ul><li><code>query</code>, full unified <code>ledger</code></li></ul>
+      <h3>Output</h3>
+      <ul>
+        <li><code>relevant_probes</code> / <code>irrelevant_probes</code></li>
+        <li><code>remaining_gaps[]</code> → <code>{description, category}</code>
+          where description may mention which domain's data is lacking</li>
+        <li><code>new_hypotheses[]</code>, <code>confidence</code> (0–1)</li>
+      </ul>
+      <p><b>Note:</b> each ledger entry's <code>result</code> is a
+      <i>markdown report</i> from a sub-agent (not raw SQL rows). The
+      <code>sub_evidence</code> field holds the granular per-probe ledger
+      from inside the sub-agent if deeper inspection is needed.</p>` },
+
+  { id: "decision_engine", x: 350, y: 415, w: 180, h: 70, cls: "hybrid",
+    title: "Unified Decision Engine", sub: "deterministic IVF + small LLM call",
+    tag: "hybrid", tagLabel: "Hybrid (deterministic + LLM)",
+    body: `<p>Reuses the single-agent's Incremental Value Framework
+      <b>verbatim</b> — the scoring logic is domain-agnostic.</p>
+      <h3>Deterministic scoring</h3>
+      <ul>
+        <li>5 weighted sub-scores: evidence coverage, confidence,
+          remaining-gaps, alternative-hypotheses, probe-cost →
+          <code>expected_incremental_value</code>.</li>
+        <li>Stop conditions checked in order:
+          <code>max_rounds_reached</code> →
+          <code>max_total_probes_reached</code> →
+          <code>all_major_gaps_closed</code> →
+          <code>no_progress_this_round</code> →
+          <code>incremental_value_below_threshold</code> → else
+          <code>continue</code>.</li>
+        <li>"probes" here = sub-agent invocations, not retrieval calls.</li>
+      </ul>
+      <h3>Small LLM call (zero-shot)</h3>
+      <p>Picks at most one <code>recommended_next_gap</code> + a short
+      <code>reason</code> — suggesting which sub-domain(s) might help.
+      Advisory only; doesn't affect continue/stop.</p>
+      <h3>Output</h3>
+      <ul>
+        <li><code>decision_engine_output</code> → <code>{continue_,
+          expected_incremental_value, stop_reason}</code></li>
+        <li><code>recommended_next_gap</code></li>
+      </ul>` },
+
+  { id: "synthesis", x: 130, y: 415, w: 170, h: 70, cls: "llm",
+    title: "Unified Synthesizer", sub: "LLM · cross-domain markdown report · zero-shot",
+    tag: "llm", tagLabel: "LLM-backed",
+    body: `<p><b>Zero-shot.</b> Merges evidence from multiple sub-domain
+      reports into one cohesive cross-domain answer. Explicitly told to:</p>
+      <ul>
+        <li>Highlight <b>convergence</b> where findings from different
+          domains reinforce each other.</li>
+        <li>Note <b>tension</b> where domains conflict.</li>
+        <li>Organize by <b>finding</b>, not by source domain — the report
+          should read as a unified analyst's answer, not a domain-by-domain
+          listing.</li>
+      </ul>
+      <h3>Input</h3>
+      <ul>
+        <li><code>query</code>, full unified <code>ledger</code>,
+          <code>decision_consultant_output</code>, <code>stop_reason</code></li>
+        <li><code>domain_knowledge_doc</code> — same consolidated doc the
+          Planner Consultant uses, so the Synthesizer can correctly
+          interpret each sub-domain's report</li>
+      </ul>
+      <h3>Output</h3>
+      <ul>
+        <li><code>markdown</code> with the same 6 sections as the
+          single-agent: Summary, Key Findings, Evidence, Recommendations,
+          Confidence, Remaining Unknowns</li>
+        <li><code>confidence</code> (0–1)</li>
+      </ul>` },
+
+  { id: "final_report", x: 130, y: 270, w: 170, h: 60, cls: "io",
+    title: "Final Report", sub: "markdown + confidence",
+    tag: "io", tagLabel: "Output",
+    body: `<p>Cross-domain markdown report returned to the user/UI:
+      <code>state.final_answer.markdown</code> and
+      <code>state.final_answer.confidence</code>, with
+      <code>state.stop_reason</code> explaining why the loop ended.</p>` },
+];
+
+const EDGES = [
+  { from: "query", to: "similar_plan" },
+  { from: "similar_plan", to: "planner_consultant" },
+  { from: "planner_consultant", to: "domain_router" },
+  { from: "domain_router", to: "domain_execution", type: "parallel", label: "parallel dispatch" },
+  { from: "domain_execution", to: "decision_consultant" },
+  { from: "decision_consultant", to: "decision_engine" },
+  { from: "decision_engine", to: "planner_consultant", type: "loop", label: "continue → next round" },
+  { from: "decision_engine", to: "synthesis", type: "stop", label: "stop" },
+  { from: "synthesis", to: "final_report" },
+];
+
+const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+function clipPoint(node, dx, dy) {
+  const hw = node.w / 2, hh = node.h / 2;
+  if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
+  const tx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const ty = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: node.x + dx * t, y: node.y + dy * t };
+}
+
+const edgesG = document.getElementById("edges");
+const nodesG = document.getElementById("nodes");
+
+for (const e of EDGES) {
+  const a = byId[e.from], b = byId[e.to];
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len;
+
+  const p1 = clipPoint(a, ux, uy);
+  const p2 = clipPoint(b, -ux, -uy);
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  let d, cls, marker;
+
+  if (e.type === "loop") {
+    d = `M ${p1.x} ${p1.y} C ${a.x-40} ${a.y-150}, ${b.x+60} ${b.y-150}, ${p2.x} ${p2.y}`;
+    cls = "edge loop"; marker = "arrow-loop";
+  } else if (e.type === "stop") {
+    d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    cls = "edge stop"; marker = "arrow-stop";
+  } else if (e.type === "parallel") {
+    d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    cls = "edge parallel"; marker = "arrow-parallel";
+  } else {
+    d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    cls = "edge"; marker = "arrow";
+  }
+
+  path.setAttribute("d", d);
+  path.setAttribute("class", cls);
+  path.setAttribute("marker-end", `url(#${marker})`);
+  edgesG.appendChild(path);
+
+  if (e.label) {
+    const mx = e.type === "loop" ? (a.x + b.x) / 2 : (p1.x + p2.x) / 2;
+    const my = e.type === "loop" ? Math.min(a.y, b.y) - 130 : (p1.y + p2.y) / 2 - 8;
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", mx);
+    text.setAttribute("y", my);
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("class", `edge-label ${e.type}`);
+    text.textContent = e.label;
+    edgesG.appendChild(text);
+  }
+}
+
+for (const n of NODES) {
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.setAttribute("class", `node ${n.cls}`);
+  g.setAttribute("data-id", n.id);
+
+  const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  rect.setAttribute("x", n.x - n.w / 2);
+  rect.setAttribute("y", n.y - n.h / 2);
+  rect.setAttribute("width", n.w);
+  rect.setAttribute("height", n.h);
+  rect.setAttribute("rx", 10);
+  g.appendChild(rect);
+
+  const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  title.setAttribute("x", n.x);
+  title.setAttribute("y", n.y - 4);
+  title.setAttribute("text-anchor", "middle");
+  title.setAttribute("font-weight", "600");
+  title.textContent = n.title;
+  g.appendChild(title);
+
+  const sub = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  sub.setAttribute("x", n.x);
+  sub.setAttribute("y", n.y + 14);
+  sub.setAttribute("text-anchor", "middle");
+  sub.setAttribute("class", "sub");
+  sub.textContent = n.sub;
+  g.appendChild(sub);
+
+  g.addEventListener("click", () => selectNode(n.id));
+  nodesG.appendChild(g);
+}
+
+function selectNode(id) {
+  for (const el of nodesG.querySelectorAll(".node")) {
+    el.classList.toggle("selected", el.dataset.id === id);
+  }
+  const n = byId[id];
+  document.getElementById("panel").innerHTML = `
+    <span class="tag ${n.tag}">${n.tagLabel}</span>
+    <h2>${n.title}</h2>
+    ${n.body}
+  `;
+}
+
+selectNode("domain_router");
+</script>
+
+</body>
+</html>
