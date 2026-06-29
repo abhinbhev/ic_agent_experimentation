@@ -156,7 +156,7 @@ _SYNTHESIZER_OUTPUT = SynthesizerOutput(markdown=_SYNTHESIS_MARKDOWN, confidence
 class FakeDomainAgentExecutor:
     """Returns canned UnifiedEvidenceLedgerEntry for each probe."""
 
-    def execute_sync(self, assignments, round_index=0):
+    def execute_sync(self, assignments, round_index=0, *, event_bus=None):
         entries = []
         for assignment in assignments:
             for probe in assignment.probes:

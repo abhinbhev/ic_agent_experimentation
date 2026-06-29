@@ -6,7 +6,7 @@ the router replaces the planner, and domain-agent reports are stored
 alongside the granular sub-evidence.
 """
 
-from typing import TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from ic_agent.models.decision_engine import DecisionEngineOutput
 from ic_agent.models.domain import DomainConfig
@@ -16,6 +16,9 @@ from unified_domain.models.decision_consultant import UnifiedDecisionConsultantO
 from unified_domain.models.domain_router import DomainAssignment
 from unified_domain.models.evidence import UnifiedEvidenceLedgerEntry
 from unified_domain.models.planner_consultant import UnifiedPlannerConsultantOutput
+
+if TYPE_CHECKING:  # avoid runtime import cycle
+    pass
 
 
 class UnifiedAgentState(TypedDict, total=False):
@@ -48,3 +51,7 @@ class UnifiedAgentState(TypedDict, total=False):
     # Final
     final_answer: SynthesizerOutput | None
     stop_reason: str | None
+
+    # Observability — optional EventBus for the live question-graph UI.
+    # Typed as Any to avoid a circular import at module load.
+    event_bus: Any

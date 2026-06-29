@@ -1,31 +1,46 @@
 """Streamlit UI for the unified domain super-agent.
 
-Run with:
+Two-column layout: the left column streams each node's output as before,
+the right column shows a live "Question Graph" — the entire tree of
+super-probes, domain assignments, sub-agent rounds, sub-probes, and
+retrieval calls — that updates as the investigation runs.
+
+Run with::
+
     uv run streamlit run ui/unified_app.py
 """
 
+from __future__ import annotations
+
+import sys
+import threading
+import traceback
 from pathlib import Path
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
-from ic_agent.config.domain_loader import load_domain_config
-from ic_agent.config.settings import get_settings
-from ic_agent.utils.logging_setup import configure_logging
-from unified_domain.graph.build_graph import build_unified_app
+# Make the local components package importable when launching via `streamlit run`
+_UI_DIR = Path(__file__).resolve().parent
+if str(_UI_DIR) not in sys.path:
+    sys.path.insert(0, str(_UI_DIR))
+
+from components.question_graph import render_question_graph  # noqa: E402
+
+from ic_agent.config.domain_loader import load_domain_config  # noqa: E402
+from ic_agent.config.settings import get_settings  # noqa: E402
+from ic_agent.utils.logging_setup import configure_logging  # noqa: E402
+from unified_domain.graph.build_graph import build_unified_app  # noqa: E402
+from unified_domain.observability import EventBus, build_tree  # noqa: E402
 
 st.set_page_config(page_title="IC Agent — Unified Domain", layout="wide")
 
 settings = get_settings()
 configure_logging(level=settings.log_level)
 
-st.title("IC Agent — Unified Domain")
-st.caption(
-    f"model: {settings.openai_model} · retrieval mode: {settings.retrieval_mode} · "
-    f"embedding backend: {settings.embedding_backend}"
-)
-
-# Load all non-example domains at module level so they show in the sidebar
-# before a run is triggered.
+# --------------------------------------------------------------------- #
+# Sidebar: domain list, query, run, panel mode
+# --------------------------------------------------------------------- #
 domain_dir = Path(settings.domain_config_dir)
 available_domains = []
 for yaml_path in sorted(domain_dir.glob("*.yaml")):
@@ -34,6 +49,11 @@ for yaml_path in sorted(domain_dir.glob("*.yaml")):
     available_domains.append(load_domain_config(yaml_path.stem, base_dir=domain_dir))
 
 with st.sidebar:
+    st.markdown("### IC Agent — Unified")
+    st.caption(
+        f"model: `{settings.openai_model}` · retrieval: `{settings.retrieval_mode}` · "
+        f"embeddings: `{settings.embedding_backend}`"
+    )
     st.markdown("**Available domains:**")
     for d in available_domains:
         st.write(f"- {d.display_name}")
@@ -45,13 +65,78 @@ with st.sidebar:
     )
     run = st.button("Run", type="primary", use_container_width=True)
 
+    st.divider()
+    st.markdown("**Live graph panel**")
+    panel_mode = st.radio(
+        "Panel",
+        options=["Split", "Hidden", "Fullscreen"],
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
+
+# --------------------------------------------------------------------- #
+# Session state
+# --------------------------------------------------------------------- #
+def _init_session_state() -> None:
+    ss = st.session_state
+    ss.setdefault("event_bus", EventBus())
+    ss.setdefault("stream_log", [])  # list[tuple[str, dict]]
+    ss.setdefault("run_thread", None)
+    ss.setdefault("run_error", None)
+    ss.setdefault("run_status", "idle")  # idle | running | done | error
+
+
+_init_session_state()
+
+
+# --------------------------------------------------------------------- #
+# Background runner
+# --------------------------------------------------------------------- #
+def _run_in_background(
+    query_text: str,
+    bus: EventBus,
+    stream_log: list,
+    domains: list,
+    domain_knowledge_doc: str,
+) -> None:
+    """Execute the super-agent run in a background thread.
+
+    The thread appends ``(node_name, update)`` tuples to ``stream_log``
+    for the UI to render, and emits graph events into ``bus``.
+    """
+    try:
+        app = build_unified_app(domains, settings, domain_knowledge_doc)
+        initial_state = {
+            "query": query_text,
+            "available_domains": domains,
+            "domain_knowledge_doc": domain_knowledge_doc,
+            "evidence_ledger": [],
+            "rounds_completed": 0,
+            "probes_completed_this_round": 0,
+            "total_probes_completed": 0,
+            "remaining_gaps": [],
+            "confidence": 0.0,
+            "event_bus": bus,
+        }
+        for step in app.stream(initial_state, config={"recursion_limit": 100}):
+            for node_name, update in step.items():
+                stream_log.append((node_name, update))
+        st.session_state.run_status = "done"
+    except Exception as exc:  # pragma: no cover — UI safety net
+        st.session_state.run_error = f"{exc!s}\n\n{traceback.format_exc()}"
+        st.session_state.run_status = "error"
+
+
+# --------------------------------------------------------------------- #
+# Rendering helpers
+# --------------------------------------------------------------------- #
 _DATA_SEPARATOR = "\n\nData:\n"
 _TRUNCATE_CHARS = 300
 
 
 def _render_result(result: str) -> None:
-    """Render a retrieval result: summary as text, raw data in a collapsed block."""
     if _DATA_SEPARATOR in result:
         summary, data_block = result.split(_DATA_SEPARATOR, 1)
         if summary.strip():
@@ -142,28 +227,80 @@ def render_step(node_name: str, update: dict) -> None:  # noqa: C901
         st.caption(f"Confidence: {update['final_answer'].confidence:.2f}")
 
 
+# --------------------------------------------------------------------- #
+# Trigger a new run
+# --------------------------------------------------------------------- #
 if run:
+    # Reset session state for the new run
+    new_bus = EventBus()
+    st.session_state.event_bus = new_bus
+    st.session_state.stream_log = []
+    st.session_state.run_error = None
+    st.session_state.run_status = "running"
+
     knowledge_doc_path = Path(settings.usecase_docs_dir) / "unified_domain" / "knowledge_doc.md"
     domain_knowledge_doc = (
         knowledge_doc_path.read_text(encoding="utf-8") if knowledge_doc_path.exists() else ""
     )
 
-    app = build_unified_app(available_domains, settings, domain_knowledge_doc)
+    thread = threading.Thread(
+        target=_run_in_background,
+        args=(
+            query,
+            new_bus,
+            st.session_state.stream_log,
+            available_domains,
+            domain_knowledge_doc,
+        ),
+        daemon=True,
+        name="unified-agent-run",
+    )
+    st.session_state.run_thread = thread
+    thread.start()
 
-    initial_state = {
-        "query": query,
-        "available_domains": available_domains,
-        "domain_knowledge_doc": domain_knowledge_doc,
-        "evidence_ledger": [],
-        "rounds_completed": 0,
-        "probes_completed_this_round": 0,
-        "total_probes_completed": 0,
-        "remaining_gaps": [],
-        "confidence": 0.0,
-    }
 
-    with st.status("Running unified agent...", expanded=True) as status:
-        for step in app.stream(initial_state, config={"recursion_limit": 100}):
-            for node_name, update in step.items():
-                render_step(node_name, update)
-        status.update(label="Done", state="complete")
+# --------------------------------------------------------------------- #
+# Auto-refresh while running
+# --------------------------------------------------------------------- #
+if st.session_state.run_status == "running":
+    st_autorefresh(interval=1000, key="unified-graph-poll")
+
+
+# --------------------------------------------------------------------- #
+# Layout: left (stream) | right (graph)
+# --------------------------------------------------------------------- #
+if panel_mode == "Hidden":
+    col_main = st.container()
+    col_graph = None
+elif panel_mode == "Fullscreen":
+    col_main = None
+    col_graph = st.container()
+else:
+    col_main, col_graph = st.columns([3, 2], gap="medium")
+
+
+# --- Left: stream ---
+if col_main is not None:
+    with col_main:
+        st.title("IC Agent — Unified Domain")
+        if st.session_state.run_status == "idle":
+            st.info("Enter a question in the sidebar and click **Run** to start an investigation.")
+        elif st.session_state.run_status == "running":
+            st.caption("Running…  the graph on the right updates in real time.")
+        elif st.session_state.run_status == "done":
+            st.success("Investigation complete.")
+        elif st.session_state.run_status == "error":
+            st.error("Run failed.")
+            with st.expander("Traceback", expanded=False):
+                st.code(st.session_state.run_error or "(no detail)")
+
+        # Render all logged steps so far
+        for node_name, update in st.session_state.stream_log:
+            render_step(node_name, update)
+
+
+# --- Right: live graph ---
+if col_graph is not None:
+    with col_graph:
+        tree = build_tree(st.session_state.event_bus.snapshot())
+        render_question_graph(tree, height=820)
