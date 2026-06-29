@@ -25,7 +25,7 @@ _UI_DIR = Path(__file__).resolve().parent
 if str(_UI_DIR) not in sys.path:
     sys.path.insert(0, str(_UI_DIR))
 
-from components.question_graph import render_question_graph  # noqa: E402
+from components.question_graph import _build_standalone_html, render_question_graph  # noqa: E402
 
 from ic_agent.config.domain_loader import load_domain_config  # noqa: E402
 from ic_agent.config.settings import get_settings  # noqa: E402
@@ -322,3 +322,31 @@ if col_graph is not None:
     with col_graph:
         tree = build_tree(st.session_state.event_bus.snapshot())
         render_question_graph(tree, height=820)
+
+        if tree is not None:
+            import json as _json
+            from datetime import datetime as _dt
+
+            stamp = _dt.now().strftime("%Y%m%d-%H%M%S")
+            share_col1, share_col2 = st.columns(2)
+            with share_col1:
+                st.download_button(
+                    "📤 Share graph (HTML)",
+                    data=_build_standalone_html(tree),
+                    file_name=f"question-graph-{stamp}.html",
+                    mime="text/html",
+                    use_container_width=True,
+                    help=(
+                        "Self-contained interactive HTML — open in any browser. "
+                        "Zoom, pan, collapse, hover for metric tooltips."
+                    ),
+                )
+            with share_col2:
+                st.download_button(
+                    "{} JSON".format("⬇"),
+                    data=_json.dumps(tree, indent=2),
+                    file_name=f"question-graph-{stamp}.json",
+                    mime="application/json",
+                    use_container_width=True,
+                    help="Raw tree snapshot — re-render programmatically with render_question_graph.",
+                )
