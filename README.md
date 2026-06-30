@@ -10,6 +10,7 @@ The project ships **two agents**:
 ---
 
 ## Quick start
+>  Note: you need the engine api from IC running on docker at port 7777 (default)
 
 ```bash
 uv sync
